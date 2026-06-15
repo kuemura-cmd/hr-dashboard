@@ -119,20 +119,90 @@ if (typeof pdfjsLib !== 'undefined') {
 const PREFS=["","北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
 const CATS=["","介護","医科","リハビリ/代替医療","保育","歯科","ヘルスケア/美容","その他"];
 const EMPS=["","正職員","契約社員","パート・バイト"];
+const CAT_JOBS = {"介護": ["介護職/ヘルパー", "生活相談員", "ケアマネジャー", "管理職（介護）", "サービス提供責任者", "生活支援員", "福祉用具専門相談員", "児童発達支援管理責任者", "サービス管理責任者", "児童指導員/指導員", "看護師/准看護師", "管理栄養士/栄養士", "調理師/調理スタッフ", "介護タクシー/ドライバー", "医療事務/受付", "介護事務", "相談支援専門員", "営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他"], "医科": ["医師", "薬剤師", "看護師/准看護師", "助産師", "保健師", "看護助手", "診療放射線技師", "臨床検査技師", "臨床工学技士", "管理栄養士/栄養士", "公認心理師/臨床心理士", "医療ソーシャルワーカー", "登録販売者", "医療事務/受付", "治験コーディネーター", "調剤事務", "営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他", "臨床開発モニター", "MR", "MR（医薬品卸）"], "リハビリ/代替医療": ["理学療法士", "言語聴覚士", "作業療法士", "視能訓練士", "柔道整復師", "あん摩マッサージ指圧師", "鍼灸師", "整体師", "営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他"], "保育": ["保育士", "幼稚園教諭", "保育補助", "児童指導員/指導員", "児童発達支援管理責任者", "看護師/准看護師", "管理栄養士/栄養士", "調理師/調理スタッフ", "放課後児童支援員/学童指導員", "営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他"], "歯科": ["歯科医師", "歯科衛生士", "歯科技工士", "歯科助手", "営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他"], "その他": ["営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他"], "ヘルスケア/美容": ["美容師", "理容師", "ネイリスト", "アイリスト", "エステティシャン/セラピスト", "美容部員", "インストラクター", "営業", "一般事務/管理部門", "清掃/環境整備", "ドライバー/配達員", "総合職/新卒/その他"]};
+// ジョブメドレー編集画面のレイアウト順に準拠
 const GROUPS=[
-  {t:"基本情報",items:[{k:"施設名",lb:"施設名",req:1,tp:"text"},{k:"都道府県",lb:"都道府県",req:1,tp:"sel",opts:PREFS},{k:"職種カテゴリ名",lb:"職種カテゴリ名",req:1,tp:"sel",opts:CATS},{k:"職種名",lb:"職種名",req:1,tp:"text"},{k:"雇用形態",lb:"雇用形態",req:1,tp:"sel",opts:EMPS}]},
-  {t:"給与",items:[{k:"給与下限",lb:"給与下限（月給/時給 円）",req:1,tp:"num"},{k:"給与上限",lb:"給与上限（月給/時給 円）",req:0,tp:"num"},{k:"給与の備考",lb:"給与の備考",req:0,tp:"ta",rows:4}]},
-  {t:"訴求文",items:[{k:"訴求文タイトル",lb:"訴求文タイトル（60文字以内）",req:1,tp:"text",max:60},{k:"訴求文",lb:"訴求文",req:1,tp:"ta",rows:7}]},
-  {t:"仕事詳細",items:[{k:"仕事内容",lb:"仕事内容",req:1,tp:"ta",rows:5},{k:"応募要件",lb:"応募要件",req:1,tp:"ta",rows:4},{k:"歓迎要件",lb:"歓迎要件",req:0,tp:"ta",rows:3}]},
-  {t:"勤務条件",items:[{k:"勤務時間",lb:"勤務時間",req:1,tp:"ta",rows:3},{k:"休日",lb:"休日",req:1,tp:"ta",rows:3},{k:"長期休暇・特別休暇",lb:"長期休暇・特別休暇",req:0,tp:"ta",rows:3}]},
-  {t:"待遇・研修",items:[{k:"待遇",lb:"待遇",req:1,tp:"ta",rows:5},{k:"教育体制・研修",lb:"教育体制・研修",req:0,tp:"ta",rows:3}]}
+  {t:"職種",items:[
+    {k:"職種カテゴリ名",lb:"職種（カテゴリ）",req:1,tp:"cat"},
+    {k:"職種名",lb:"職種名（カテゴリ選択で絞り込み）",req:1,tp:"job"},
+    {k:"職種名表示",lb:"職種名（掲載用テキスト）",req:1,tp:"text"}
+  ]},
+  {t:"訴求文",items:[
+    {k:"訴求文タイトル",lb:"訴求文タイトル（60文字以内）",req:1,tp:"text",max:60},
+    {k:"訴求文",lb:"訴求文",req:1,tp:"ta",rows:7}
+  ]},
+  {t:"仕事内容",items:[
+    {k:"仕事内容",lb:"仕事内容",req:1,tp:"ta",rows:5}
+  ]},
+  {t:"雇用形態と給与",items:[
+    {k:"施設名",lb:"施設名",req:1,tp:"text"},
+    {k:"都道府県",lb:"都道府県",req:1,tp:"sel",opts:PREFS},
+    {k:"雇用形態",lb:"雇用形態",req:1,tp:"sel",opts:EMPS},
+    {k:"給与下限",lb:"給与下限（月給/時給 円）",req:1,tp:"num"},
+    {k:"給与上限",lb:"給与上限（月給/時給 円）",req:0,tp:"num"},
+    {k:"給与の備考",lb:"給与の備考",req:0,tp:"ta",rows:5}
+  ]},
+  {t:"待遇",items:[
+    {k:"待遇",lb:"待遇",req:1,tp:"ta",rows:5}
+  ]},
+  {t:"教育体制・研修",items:[
+    {k:"教育体制・研修",lb:"教育体制・研修",req:0,tp:"ta",rows:3}
+  ]},
+  {t:"勤務時間・休憩時間",items:[
+    {k:"勤務時間",lb:"勤務時間",req:1,tp:"ta",rows:4}
+  ]},
+  {t:"休日",items:[
+    {k:"休日",lb:"休日",req:1,tp:"ta",rows:3}
+  ]},
+  {t:"長期休暇・特別休暇",items:[
+    {k:"長期休暇・特別休暇",lb:"長期休暇・特別休暇",req:0,tp:"ta",rows:3}
+  ]},
+  {t:"応募要件",items:[
+    {k:"応募要件",lb:"応募要件",req:1,tp:"ta",rows:4}
+  ]},
+  {t:"歓迎要件",items:[
+    {k:"歓迎要件",lb:"歓迎要件",req:0,tp:"ta",rows:3}
+  ]}
 ];
 const ALL_ITEMS=GROUPS.flatMap(g=>g.items);
 const JM_OUT=["求人ID","施設ID","施設名","職種カテゴリ名","職種名","掲載状況","雇用形態","給与下限（正・契＝月給、パ＝時給）","給与上限（正・契＝月給、パ＝時給）","給与の備考","訴求文タイトル","訴求文","仕事内容","応募要件","歓迎要件","勤務時間","休日","長期休暇・特別休暇","待遇","教育体制・研修","都道府県"];
-const SYS_PROMPT=`求人票（画像）から情報を抽出しジョブメドレー形式のJSONのみ出力（コードブロック・説明文不要）。
-年収記載は月給換算（÷12、千円未満切捨）。訴求文は300〜500文字で作成。
-職種カテゴリは次から選択: 介護/医科/リハビリ・代替医療/保育/歯科/ヘルスケア・美容/その他
-{"施設名":"","都道府県":"","職種カテゴリ名":"","職種名":"","雇用形態":"","給与下限":null,"給与上限":null,"給与の備考":"","訴求文タイトル":"","訴求文":"","仕事内容":"","応募要件":"","歓迎要件":"","勤務時間":"","休日":"","長期休暇・特別休暇":"","待遇":"","教育体制・研修":"","不足情報":[]}`;
+const SYS_PROMPT=`求人票（画像・複数ページの場合あり）から情報を抽出しジョブメドレー形式のJSONのみ出力（コードブロック・説明文不要）。複数ページは1件の求人として統合する。
+
+【給与（最重要・絶対厳守）】
+給与下限・給与上限には「月給額（円）」をそのまま入れる。勝手に割り算・換算は一切しないこと。
+1. ハローワーク求人票で「月額（ａ＋ｂ）」の記載がある場合 → その金額（例:236,500円〜293,500円）を給与下限・上限にそのまま使う。これが最優先。
+2. 「基本給（月額）」「月給」の記載がある場合 → その月額をそのまま使う。
+3. 月額・月給がどこにも無く「年収」しか無い場合に限り → 年収÷12（千円未満切捨）で月給換算する。
+※雇用形態がパート・バイトの場合のみ時給額を入れる。
+※「19,708円」のような明らかに月給として低すぎる値を出力してはならない。月給は通常15万〜50万円程度。
+
+【給与の備考（必ず下記の2ブロック構成で記載）】
+ジョブメドレーの「給与の備考」欄は次の決まった書式で記載する。該当項目が無い場合はその行を省略。
+
+・内訳
+基本給:200,000円〜250,000円
+職務手当:30,000円〜37,000円
+ベースアップ手当:6,500円〜6,500円
+固定残業代なし（ある場合は「固定残業代あり ○○円」）
+
+・その他手当
+各種認定資格に応じて○○円〜○○円（資格手当がある場合）
+夜勤手当:15,000円／回
+通勤手当実費支給　上限月額17,500円
+昇給制度あり　月あたり○○円〜○○円(実績)
+賞与制度あり　年3回　計4.50ヶ月分(実績)
+試用期間3ヶ月 同条件
+
+※先頭に「・内訳」「・その他手当」の見出しを必ず付け、両ブロックの間は空行で区切る。
+※基本給(a)・定額手当(b)は「・内訳」へ、それ以外の変動手当・昇給・賞与・試用期間は「・その他手当」へ振り分ける。
+
+【その他】
+年額（a+b）が月額の意味で使われるハローワーク特有の表記に注意。「月額（ａ＋ｂ）」は必ず月給。
+訴求文は300〜500文字で魅力的に作成。
+職種カテゴリ名は必ず次のいずれか1つ: 介護 / 医科 / リハビリ/代替医療 / 保育 / 歯科 / ヘルスケア/美容 / その他
+職種名は職種カテゴリに応じた標準的な職種名（例:看護師/准看護師、理学療法士、介護職/ヘルパー、医療事務/受付 等）。
+不足情報には、求人票から読み取れなかった必須項目（施設名/都道府県/職種カテゴリ名/職種名/雇用形態/給与下限/訴求文タイトル/訴求文/仕事内容/応募要件/勤務時間/休日/待遇）の名称を配列で入れる。
+{"施設名":"","都道府県":"","職種カテゴリ名":"","職種名":"","職種名表示":"","雇用形態":"","給与下限":null,"給与上限":null,"給与の備考":"","訴求文タイトル":"","訴求文":"","仕事内容":"","応募要件":"","歓迎要件":"","勤務時間":"","休日":"","長期休暇・特別休暇":"","待遇":"","教育体制・研修":"","不足情報":[]}`;
 
 // ============================================================
 // CONVERSION UTILITIES
@@ -166,7 +236,31 @@ const KW2J=[
   {kws:["事業管理","総合職","施設管理者"],j:"一般事務/管理部門",c:"介護"},
 ];
 const guessJob=t=>{for(const e of KW2J)for(const k of e.kws)if(t?.includes(k))return{j:e.j,c:e.c};return{j:'',c:''};};
-const bSal=row=>{const L=[];const base=vr(row,'基本給（ａ）');if(base){const m=base.match(/([\d,]+)円[〜～]([\d,]+)円/);if(m)L.push(`基本給 ${m[1]}円～${m[2]}円`);else{const m2=base.match(/([\d,]+)円/);if(m2)L.push(`基本給 ${m2[1]}円`);}}const bA=vr(row,'定額的に支払われる手当（ｂ）');if(bA)bA.replace('　',' ').split(/\s{2,}/).forEach(it=>{it=it.trim();if(!it)return;const m=it.match(/(.+?)\s+([\d,]+)円[〜～]([\d,]+)円/);L.push(m?`${m[1].trim()} ${m[2]}円～${m[3]}円`:it);});const fc=vr(row,'固定残業代（ｃ）');L.push(fc?`固定残業代あり ${fc}`:'固定残業代なし');const cm=vr(row,'通勤手当');if(cm){const m=cm.match(/([\d,]+)円/);L.push(m?`通勤手当実費支給 上限月額${m[1]}円`:'通勤手当実費支給');}const ri=vr(row,'昇給');if(ri&&ri.includes('あり')){const m=ri.match(/([\d,]+)円[〜～]([\d,]+)円/);L.push(m?`昇給制度あり 月${m[1]}円～${m[2]}円（実績）`:'昇給制度あり');}const bn=vr(row,'賞与');if(bn&&bn.includes('あり')){const tm=bn.match(/年(\d+)回/),mm=bn.match(/([\d.]+)ヶ月分/),am=bn.match(/([\d,]+)円/);if(tm&&mm)L.push(`賞与あり 年${tm[1]}回 計${mm[1]}ヶ月分（実績）`);else if(tm&&am)L.push(`賞与あり 年${tm[1]}回 ${am[1]}円（実績）`);else if(tm)L.push(`賞与あり 年${tm[1]}回`);else L.push('賞与制度あり');}return L.join('\n');};
+const bSal=row=>{
+  const naibun=[];const sonota=[];
+  // ── 内訳ブロック ──
+  const base=vr(row,'基本給（ａ）');
+  if(base){const m=base.match(/([\d,]+)円[〜～]([\d,]+)円/);if(m)naibun.push(`基本給:${m[1]}円〜${m[2]}円`);else{const m2=base.match(/([\d,]+)円/);if(m2)naibun.push(`基本給:${m2[1]}円`);}}
+  const bA=vr(row,'定額的に支払われる手当（ｂ）');
+  if(bA)bA.replace('　',' ').split(/\s{2,}/).forEach(it=>{it=it.trim();if(!it)return;const m=it.match(/(.+?)\s+([\d,]+)円[〜～]([\d,]+)円/);naibun.push(m?`${m[1].trim()}:${m[2]}円〜${m[3]}円`:it);});
+  const fc=vr(row,'固定残業代（ｃ）');
+  naibun.push(fc?`固定残業代あり ${fc}`:'固定残業代なし');
+  // ── その他手当ブロック ──
+  const dt=vr(row,'その他の手当等付記事項（ｄ）');
+  if(dt)dt.split(/[　\n]+/).forEach(it=>{it=it.trim();if(it)sonota.push(it);});
+  const cm=vr(row,'通勤手当');
+  if(cm){const m=cm.match(/([\d,]+)円/);sonota.push(m?`通勤手当実費支給　上限月額${m[1]}円`:'通勤手当実費支給');}
+  const ri=vr(row,'昇給');
+  if(ri&&ri.includes('あり')){const m=ri.match(/([\d,]+)円[〜～]([\d,]+)円/);sonota.push(m?`昇給制度あり　月あたり${m[1]}円〜${m[2]}円(実績)`:'昇給制度あり');}
+  const bn=vr(row,'賞与');
+  if(bn&&bn.includes('あり')){const tm=bn.match(/年(\d+)回/),mm=bn.match(/([\d.]+)ヶ月分/),am=bn.match(/([\d,]+)円/);if(tm&&mm)sonota.push(`賞与制度あり　年${tm[1]}回　計${mm[1]}ヶ月分(実績)`);else if(tm&&am)sonota.push(`賞与制度あり　年${tm[1]}回　${am[1]}円(実績)`);else if(tm)sonota.push(`賞与制度あり　年${tm[1]}回`);else sonota.push('賞与制度あり');}
+  const tr=vr(row,'試用期間');
+  if(tr&&tr.includes('あり')){const m=tr.match(/(\d+)[ヶかカ]月/);if(m)sonota.push(`試用期間${m[1]}ヶ月 同条件`);}
+  // ── 組み立て ──
+  let out='・内訳\n'+naibun.join('\n');
+  if(sonota.length)out+='\n\n・その他手当\n'+sonota.join('\n');
+  return out;
+};
 const bH=row=>{const wt=vr(row,'就業時間'),bt=vr(row,'休憩時間'),ot=vr(row,'時間外労働時間'),L=[];if(wt.includes('変形')){const u=(wt.includes('１ヶ月')||wt.includes('1ヶ月'))?'1ヶ月単位':(wt.includes('１年')||wt.includes('1年'))?'1年単位':'';if(u)L.push(`変形労働時間制 ${u}`);}[...wt.matchAll(/就業時間[１２３４]?\s*(\d+)時(\d+)分[〜～](\d+)時(\d+)分/g)].forEach((m,i)=>{const[,h1,n1,h2,n2]=m;const s=`${h1.padStart(2,'0')}:${n1.padStart(2,'0')}`;const e=parseInt(h2)<parseInt(h1)?`翌${h2.padStart(2,'0')}:${n2.padStart(2,'0')}`:`${h2.padStart(2,'0')}:${n2.padStart(2,'0')}`;L.push(`(${i+1})${s}～${e}`);});const sp=wt.match(/就業時間に関する特記事項\s*(.+)/);if(sp&&sp[1].trim())L.push(sp[1].trim());const bm=bt.match(/(\d+)分/);if(bm)L.push(`休憩${bm[1]}分`);const om=ot.match(/月平均時間外労働時間\s*(\d+)時間/);if(om)L.push(`月平均時間外労働時間 ${om[1]}時間`);else if(ot&&(ot.includes('ほぼなし')||ot.includes('なし')))L.push('残業ほぼなし');return L.join('\n')||wt;};
 const bHol=row=>{const r=vr(row,'休日等'),d=vr(row,'年間休日数'),L=[];if(r.includes('完全週休二日'))L.push('完全週休2日制');else if(r.includes('シフト'))L.push('シフト制');else if(r.includes('４週８休')||r.includes('4週8休'))L.push('4週8休');else{const ds=['土曜日','日曜日','祝日'].filter(x=>r.includes(x));if(ds.length)L.push(ds.join('、'));}if(d)L.push(`年間休日${d}日`);return L.join('\n')||r;};
 const bSp=row=>{const r=vr(row,'休日等'),L=[];const m=r.match(/６ヶ月経過後の年次有給休暇日数\s*(\d+)日/);if(m)L.push(`有給休暇（6ヶ月経過後）${m[1]}日`);else if(r.includes('有給'))L.push('有給休暇あり');if(vr(row,'育児休業取得実績')==='あり')L.push('育児休業取得実績あり');if(vr(row,'介護休業取得実績')==='あり')L.push('介護休業取得実績あり');return L.join('\n');};
@@ -178,21 +272,26 @@ const convertRow=row=>{const hwT=vr(row,'職種');const{j,c}=guessJob(hwT);const
 // ============================================================
 // OPENAI API
 // ============================================================
-async function callOpenAI(base64Img, mimeType) {
+async function callOpenAI(images) {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('APIキーが設定されていません。右上の「⚙ OpenAI APIキー設定」から設定してください。');
+  // images: [{base64, mimeType}, ...] 複数ページ対応
+  const imageContents = images.map(img => ({
+    type:'image_url',
+    image_url:{url:`data:${img.mimeType};base64,${img.base64}`, detail:'high'}
+  }));
+  const pageNote = images.length > 1
+    ? `この求人票は${images.length}ページで1セットです。全ページを統合して1件の求人情報としてJSONで出力してください。`
+    : 'この求人票の情報を抽出してJSONで出力してください。';
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
     body: JSON.stringify({
       model: 'gpt-4o',
-      max_tokens: 2000,
+      max_tokens: 2500,
       messages: [
         {role:'system', content: SYS_PROMPT},
-        {role:'user', content: [
-          {type:'image_url', image_url:{url:`data:${mimeType};base64,${base64Img}`,detail:'high'}},
-          {type:'text', text:'この求人票の情報を抽出してJSONで出力してください。'}
-        ]}
+        {role:'user', content: [...imageContents, {type:'text', text: pageNote}]}
       ]
     })
   });
@@ -207,17 +306,23 @@ async function callOpenAI(base64Img, mimeType) {
   return JSON.parse(clean);
 }
 
-async function pdfToBase64Img(file) {
+async function pdfToImages(file, onProgress) {
   if (typeof pdfjsLib === 'undefined') throw new Error('PDF.jsが読み込まれていません。インターネット接続を確認してください。');
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({data: buf}).promise;
-  const page = await pdf.getPage(1);
-  const vp = page.getViewport({scale: 2.0});
-  const canvas = document.createElement('canvas');
-  canvas.width = vp.width; canvas.height = vp.height;
-  await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
-  const url = canvas.toDataURL('image/jpeg', 0.85);
-  return {base64: url.split(',')[1], mimeType:'image/jpeg', previewUrl: url};
+  const numPages = pdf.numPages;
+  const images = [];
+  for (let p = 1; p <= numPages; p++) {
+    if (onProgress) onProgress(p, numPages);
+    const page = await pdf.getPage(p);
+    const vp = page.getViewport({scale: 2.0});
+    const canvas = document.createElement('canvas');
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise;
+    const url = canvas.toDataURL('image/jpeg', 0.82);
+    images.push({base64: url.split(',')[1], mimeType:'image/jpeg', previewUrl: url});
+  }
+  return images;
 }
 
 function imgToBase64(file) {
@@ -263,7 +368,7 @@ const dlCSV = recs => {
 // STATE
 // ============================================================
 const S = {
-  single:{file:null,previewUrl:null,loading:false,jm:null,miss:[],err:'',saveMsg:'',dOpen:false},
+  single:{file:null,previewUrls:null,loading:false,loadMsg:'',jm:null,miss:[],err:'',saveMsg:'',dOpen:false},
   batch: {file:null,conv:false,prog:0,done:0,total:0,results:[],err:''}
 };
 
@@ -277,6 +382,15 @@ function rFld(f, val) {
   const bd = `border:1px solid ${empty?'#e53935':'#ddd'}`;
   const base = `width:100%;padding:7px 10px;${bd};border-radius:5px;font-size:13px;font-family:inherit;color:#333;background:#fff;box-sizing:border-box`;
   const lbl = `<label class="fl${empty?' miss':''}">${f.req?'* ':''}${f.lb}${empty?'<span style="font-weight:400;margin-left:4px;color:#e53935"> — 要入力</span>':''}</label>`;
+  // 職種カテゴリ（選択するとjob欄が連動して絞り込まれる）
+  if(f.tp==='cat') return `<div>${lbl}<select style="${base}" onchange="updateCat(this.value)">${CATS.map(o=>`<option value="${esc(o)}"${o===val?'selected':''}>${o||'-- カテゴリを選択 --'}</option>`).join('')}</select></div>`;
+  // 職種名（選択中のカテゴリに属する職種のみ表示）
+  if(f.tp==='job'){
+    const cat=S.single.jm['職種カテゴリ名']||'';
+    const jobs=CAT_JOBS[cat]||[];
+    if(!cat) return `<div>${lbl}<select style="${base};background:#f5f5f5;color:#aaa" disabled><option>← 先にカテゴリを選択</option></select></div>`;
+    return `<div>${lbl}<select style="${base}" onchange="updateJob(this.value)"><option value="">-- 職種を選択 --</option>${jobs.map(j=>`<option value="${esc(j)}"${j===val?'selected':''}>${esc(j)}</option>`).join('')}</select></div>`;
+  }
   if(f.tp==='sel') return `<div>${lbl}<select style="${base}" onchange="updateJM('${f.k}',this.value)">${f.opts.map(o=>`<option value="${esc(o)}"${o===val?'selected':''}>${o||'-- 選択 --'}</option>`).join('')}</select></div>`;
   if(f.tp==='ta') return `<div>${lbl}<textarea style="${base};resize:vertical" rows="${f.rows||3}" onchange="updateJM('${f.k}',this.value)">${esc(val||'')}</textarea></div>`;
   const ctr = f.max?`<span id="c_${f.k}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;color:${(val?.length||0)>f.max*.85?'#e53935':'#aaa'}">${val?.length||0}/${f.max}</span>`:'';
@@ -301,7 +415,7 @@ function renderSingle() {
       <button class="btn" onclick="doExt()" ${s.loading?'disabled':''} style="font-size:15px;padding:11px 32px">
         ${s.loading?'⏳　AI変換中... （GPT-4o）':'🔄　AI変換する　（GPT-4o）'}
       </button>
-      ${s.loading?'<div style="font-size:12px;color:#888;margin-top:6px">求人票を解析して各フィールドに自動入力しています</div>':''}
+      ${s.loading?`<div style="font-size:12px;color:#888;margin-top:6px">${esc(s.loadMsg||'求人票を解析して各フィールドに自動入力しています')}</div>`:''}
     </div>`;
   }
   if (s.err) h += `<div class="a-err">⚠ ${esc(s.err)}</div>`;
@@ -311,8 +425,8 @@ function renderSingle() {
     h += `<div class="g2">`;
     // Left
     h += `<div style="display:flex;flex-direction:column;gap:10px">`;
-    h += `<div class="card"><div style="font-weight:700;font-size:14px;margin-bottom:10px">元ファイル</div>`;
-    if (s.previewUrl) h += `<img src="${s.previewUrl}" alt="元ファイル" style="width:100%;border-radius:6px;margin-bottom:10px;border:1px solid #eee">`;
+    h += `<div class="card"><div style="font-weight:700;font-size:14px;margin-bottom:10px">元ファイル${(s.previewUrls&&s.previewUrls.length>1)?`（${s.previewUrls.length}ページ）`:''}</div>`;
+    if (s.previewUrls && s.previewUrls.length) h += s.previewUrls.map((u,i)=>`<div style="margin-bottom:8px">${s.previewUrls.length>1?`<div style="font-size:11px;color:#aaa;margin-bottom:2px">ページ ${i+1}</div>`:''}<img src="${u}" alt="元ファイル ページ${i+1}" style="width:100%;border-radius:6px;border:1px solid #eee"></div>`).join('');
     else h += `<div style="background:#f5f5f5;border-radius:6px;padding:10px;font-size:12px;color:#888;margin-bottom:10px">📄 ${esc(s.file?.name||'')}</div>`;
     h += `<div style="font-size:12px;font-weight:700;color:#666;margin-bottom:6px">抽出された主要情報</div>`;
     [['施設名',s.jm.施設名],['職種',s.jm.職種名],['雇用形態',s.jm.雇用形態],['給与下限',s.jm.給与下限?`月 ${Number(s.jm.給与下限||0).toLocaleString()}円〜`:''],['都道府県',s.jm.都道府県]].forEach(([l,v])=>{
@@ -409,30 +523,53 @@ function switchTab(id) {
 }
 function sDrop(e){e.preventDefault();const f=e.dataTransfer.files[0];if(f)sFile(f);}
 function bDrop(e){e.preventDefault();const f=e.dataTransfer.files[0];if(f)bFile(f);}
-function sFile(f){if(!f)return;if(S.single.previewUrl&&S.single.previewUrl.startsWith('blob'))URL.revokeObjectURL(S.single.previewUrl);S.single={...S.single,file:f,previewUrl:null,jm:null,miss:[],err:''};if(f.type.startsWith('image/')){const r=new FileReader();r.onload=e=>{S.single.previewUrl=e.target.result;renderSingle();};r.readAsDataURL(f);}else{renderSingle();}}
+function sFile(f){if(!f)return;S.single={...S.single,file:f,previewUrls:null,jm:null,miss:[],err:'',loadMsg:''};if(f.type.startsWith('image/')){const r=new FileReader();r.onload=e=>{S.single.previewUrls=[e.target.result];renderSingle();};r.readAsDataURL(f);}else{renderSingle();}}
 function bFile(f){if(!f)return;S.batch={...S.batch,file:f,results:[],err:''};renderBatch();}
 function updateJM(k,v){if(S.single.jm)S.single.jm[k]=v;}
+function updateCat(v){if(!S.single.jm)return;S.single.jm['職種カテゴリ名']=v;
+  // カテゴリ変更時、現在の職種名がそのカテゴリに無ければクリア
+  const jobs=CAT_JOBS[v]||[];
+  if(!jobs.includes(S.single.jm['職種名']))S.single.jm['職種名']='';
+  renderSingle();}
+function updateJob(v){if(!S.single.jm)return;S.single.jm['職種名']=v;
+  // 掲載用テキストが空なら職種名で初期化
+  if(!S.single.jm['職種名表示'])S.single.jm['職種名表示']=v;
+  renderSingle();}
 function toggleD(){S.single.dOpen=!S.single.dOpen;renderSingle();}
 function loadD(id){const d=loadDraft(id);if(d){S.single.jm={...d};S.single.miss=[];renderSingle();}}
 function rmD(id){rmDraft(id);renderSingle();}
 
 async function doExt(){
   if(!S.single.file)return;
-  S.single.loading=true;S.single.err='';renderSingle();
+  S.single.loading=true;S.single.err='';S.single.loadMsg='';renderSingle();
   try{
     const file=S.single.file;
-    let imgData;
+    let images;
     if(file.type==='application/pdf'){
-      imgData=await pdfToBase64Img(file);
-      S.single.previewUrl=imgData.previewUrl;
+      images=await pdfToImages(file,(p,total)=>{
+        S.single.loadMsg=`PDFを画像化中... (${p}/${total}ページ)`;renderSingle();
+      });
+      S.single.previewUrls=images.map(im=>im.previewUrl);
+      S.single.loadMsg=`${images.length}ページをAIで解析中...`;renderSingle();
     }else{
-      imgData=await imgToBase64(file);
+      const img=await imgToBase64(file);
+      images=[img];
+      S.single.previewUrls=[img.previewUrl];
     }
-    const result=await callOpenAI(imgData.base64,imgData.mimeType);
+    const result=await callOpenAI(images);
     const{不足情報,...data}=result;
-    S.single.jm=data;S.single.miss=不足情報||[];
+    // 職種名表示の初期化（掲載用テキスト）
+    if(!data['職種名表示']&&data['職種名'])data['職種名表示']=data['職種名'];
+    // 給与の検算：月給なのに低すぎる値はAI誤変換の可能性が高い
+    const miss=不足情報||[];
+    const emp=data['雇用形態']||'';
+    const low=Number(data['給与下限']);
+    if(emp!=='パート・バイト'&&low>0&&low<100000){
+      miss.unshift(`⚠ 給与下限が ${low.toLocaleString()}円 と月給として低すぎます。年収を月給に誤変換している可能性があります。求人票の「月額（a+b）」の金額をご確認ください`);
+    }
+    S.single.jm=data;S.single.miss=miss;
   }catch(e){S.single.err=`変換エラー: ${e.message}`;}
-  finally{S.single.loading=false;renderSingle();}
+  finally{S.single.loading=false;S.single.loadMsg='';renderSingle();}
 }
 function doSave(){if(!S.single.jm)return;saveDraft(S.single.jm);S.single.saveMsg='保存完了';renderSingle();setTimeout(()=>{S.single.saveMsg='';renderSingle();},2500);}
 
