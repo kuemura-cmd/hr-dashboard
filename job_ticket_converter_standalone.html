@@ -196,6 +196,32 @@ const SYS_PROMPT=`求人票（画像・複数ページの場合あり）から�
 ※先頭に「・内訳」「・その他手当」の見出しを必ず付け、両ブロックの間は空行で区切る。
 ※基本給(a)・定額手当(b)は「・内訳」へ、それ以外の変動手当・昇給・賞与・試用期間は「・その他手当」へ振り分ける。
 
+【勤務時間（適宜改行して見やすく）】
+就業時間を1行ずつ改行して記載。休憩時間も必ず記載する。
+※休憩時間が日勤帯と夜勤帯で異なる場合は分けて書く（夜勤は休憩90分など長いことが多い）。
+例:
+変形労働時間制（1ヶ月単位）
+(1)08:30〜17:30
+(2)07:00〜16:00
+(3)〜19:00
+(4)16:30〜翌09:00
+休憩60分（日勤帯）
+休憩90分（夜勤帯(4)）
+月平均時間外労働 10時間
+
+【仕事内容（必須項目を必ず転記）】
+仕事内容の本文に加えて、以下を必ず含める:
+・「変更の範囲」の記載（例:「（変更の範囲）変更なし」）を必ず転記する。
+・転勤の可能性（例:「転勤あり（範囲:八代市内）」または「転勤なし」）を転記する。
+
+【待遇（加入保険・退職金・受動喫煙・マイカー通勤を必ず記載）】
+以下を漏れなく記載する:
+・加入保険:「加入保険等」欄を確認し、雇用保険／労災保険／健康保険／厚生年金など加入しているものを「社会保険完備（雇用保険・労災保険・健康保険・厚生年金）」のように列挙。
+・退職金:退職金制度または退職金共済の有無（例:「退職金制度あり（勤続5年以上）」）。
+・受動喫煙対策:「就業場所」欄の記載を転記（例:「受動喫煙対策あり（屋内禁煙）」）。
+・マイカー通勤:可否を転記（例:「マイカー通勤可（無料駐車場あり）」）。
+・その他、定年制・再雇用制度・託児施設・社員食堂等があれば記載。
+
 【その他】
 年額（a+b）が月額の意味で使われるハローワーク特有の表記に注意。「月額（ａ＋ｂ）」は必ず月給。
 訴求文は300〜500文字で魅力的に作成。
@@ -261,13 +287,111 @@ const bSal=row=>{
   if(sonota.length)out+='\n\n・その他手当\n'+sonota.join('\n');
   return out;
 };
-const bH=row=>{const wt=vr(row,'就業時間'),bt=vr(row,'休憩時間'),ot=vr(row,'時間外労働時間'),L=[];if(wt.includes('変形')){const u=(wt.includes('１ヶ月')||wt.includes('1ヶ月'))?'1ヶ月単位':(wt.includes('１年')||wt.includes('1年'))?'1年単位':'';if(u)L.push(`変形労働時間制 ${u}`);}[...wt.matchAll(/就業時間[１２３４]?\s*(\d+)時(\d+)分[〜～](\d+)時(\d+)分/g)].forEach((m,i)=>{const[,h1,n1,h2,n2]=m;const s=`${h1.padStart(2,'0')}:${n1.padStart(2,'0')}`;const e=parseInt(h2)<parseInt(h1)?`翌${h2.padStart(2,'0')}:${n2.padStart(2,'0')}`:`${h2.padStart(2,'0')}:${n2.padStart(2,'0')}`;L.push(`(${i+1})${s}～${e}`);});const sp=wt.match(/就業時間に関する特記事項\s*(.+)/);if(sp&&sp[1].trim())L.push(sp[1].trim());const bm=bt.match(/(\d+)分/);if(bm)L.push(`休憩${bm[1]}分`);const om=ot.match(/月平均時間外労働時間\s*(\d+)時間/);if(om)L.push(`月平均時間外労働時間 ${om[1]}時間`);else if(ot&&(ot.includes('ほぼなし')||ot.includes('なし')))L.push('残業ほぼなし');return L.join('\n')||wt;};
+const bH=row=>{
+  const wt=vr(row,'就業時間'),bt=vr(row,'休憩時間'),ot=vr(row,'時間外労働時間'),L=[];
+  if(wt.includes('変形')){const u=(wt.includes('１ヶ月')||wt.includes('1ヶ月'))?'1ヶ月単位':(wt.includes('１年')||wt.includes('1年'))?'1年単位':'';if(u)L.push(`変形労働時間制（${u}）`);}
+  const z2h=s=>String(s).replace(/[０-９]/g,d=>'０１２３４５６７８９'.indexOf(d));
+  // 就業時間帯を1行ずつ
+  [...wt.matchAll(/就業時間[１２３４]?\s*(\d+)時(\d+)分[〜～](\d+)時(\d+)分/g)].forEach((m,i)=>{const[,h1,n1,h2,n2]=m;const s=`${h1.padStart(2,'0')}:${n1.padStart(2,'0')}`;const e=parseInt(h2)<parseInt(h1)?`翌${h2.padStart(2,'0')}:${n2.padStart(2,'0')}`:`${h2.padStart(2,'0')}:${n2.padStart(2,'0')}`;L.push(`(${i+1})${s}〜${e}`);});
+  // 就業時間特記事項（夜勤帯など）
+  const sp=wt.match(/就業時間に関する特記事項\s*(.+)/);
+  let nightBreak=null;
+  if(sp){
+    const spText=sp[1];
+    // 特記内の追加時間帯（全角コロン対応）例:（４）１６：３０〜翌９：００
+    [...spText.matchAll(/[（(]([０-９\d]+)[）)]\s*([０-９\d]{1,2})[：:]([０-９\d]{2})\s*[〜～]\s*(翌?)([０-９\d]{1,2})[：:]([０-９\d]{2})/g)].forEach(m=>{
+      L.push(`(${z2h(m[1])})${z2h(m[2]).padStart(2,'0')}:${z2h(m[3])}〜${m[4]}${z2h(m[5]).padStart(2,'0')}:${z2h(m[6])}`);
+    });
+    // 夜勤帯の休憩
+    const nb=spText.match(/休憩\s*([０-９\d]+)\s*分/);
+    if(nb)nightBreak=z2h(nb[1]);
+    // 交替制の注記
+    if(spText.includes('交替'))L.push('＊交替制');
+  }
+  // 休憩時間（日勤帯と夜勤帯を書き分け）
+  const bm=bt.match(/(\d+)分/);
+  const dayBreak=bm?bm[1]:null;
+  if(dayBreak&&nightBreak&&dayBreak!==nightBreak){
+    L.push(`休憩${dayBreak}分（日勤帯）`);
+    L.push(`休憩${nightBreak}分（夜勤帯）`);
+  }else if(dayBreak){
+    L.push(`休憩${dayBreak}分`);
+  }else if(nightBreak){
+    L.push(`休憩${nightBreak}分`);
+  }
+  // 時間外労働
+  const om=ot.match(/月平均時間外労働時間\s*(\d+)時間/)||ot.match(/月平均\s*(\d+)\s*時間/);
+  if(om)L.push(`月平均時間外労働 ${om[1]}時間`);else if(ot&&(ot.includes('ほぼなし')||ot.includes('なし')))L.push('残業ほぼなし');
+  return L.join('\n')||wt;
+};
 const bHol=row=>{const r=vr(row,'休日等'),d=vr(row,'年間休日数'),L=[];if(r.includes('完全週休二日'))L.push('完全週休2日制');else if(r.includes('シフト'))L.push('シフト制');else if(r.includes('４週８休')||r.includes('4週8休'))L.push('4週8休');else{const ds=['土曜日','日曜日','祝日'].filter(x=>r.includes(x));if(ds.length)L.push(ds.join('、'));}if(d)L.push(`年間休日${d}日`);return L.join('\n')||r;};
 const bSp=row=>{const r=vr(row,'休日等'),L=[];const m=r.match(/６ヶ月経過後の年次有給休暇日数\s*(\d+)日/);if(m)L.push(`有給休暇（6ヶ月経過後）${m[1]}日`);else if(r.includes('有給'))L.push('有給休暇あり');if(vr(row,'育児休業取得実績')==='あり')L.push('育児休業取得実績あり');if(vr(row,'介護休業取得実績')==='あり')L.push('介護休業取得実績あり');return L.join('\n');};
-const bBen=row=>{const L=[];const ins=vr(row,'加入保険等');if(ins)L.push(ins.replace(/[，,]/g,'、'));const re=vr(row,'退職金制度');if(re.includes('あり')){const m=re.match(/(\d+)年以上/);L.push(m?`退職金制度あり（勤続${m[1]}年以上）`:'退職金制度あり');}else if(vr(row,'退職金共済').includes('あり'))L.push('退職金共済あり');const fr=vr(row,'定年制');if(fr.includes('あり')){const m=fr.match(/一律\s*(\d+)歳/);L.push(m?`定年制あり（一律${m[1]}歳）`:'定年制あり');}const reE=vr(row,'再雇用制度');if(reE.includes('あり')){const m=reE.match(/上限\s*(\d+)歳/);L.push(m?`再雇用制度あり（上限${m[1]}歳）`:'再雇用制度あり');}if(vr(row,'利用可能託児施設').includes('あり'))L.push('利用可能託児施設あり');const wp=vr(row,'就業場所');if(wp.includes('屋内禁煙'))L.push('受動喫煙対策あり（屋内禁煙）');else if(wp.includes('敷地内禁煙'))L.push('受動喫煙対策あり（敷地内禁煙）');const mc=vr(row,'マイカー通勤');if(mc.includes('可'))L.push(mc.includes('無料')?'マイカー通勤可（無料駐車場あり）':'マイカー通勤可');const wf=vr(row,'福利厚生の内容');if(wf){const ex=L.join('\n');wf.split(/[　\n]+/).forEach(it=>{it=it.trim();if(it&&!ex.includes(it))L.push(it);});}return L.join('\n');};
+const bBen=row=>{
+  const L=[];
+  // 加入保険：雇用・労災・健康・厚生年金などを列挙
+  const ins=vr(row,'加入保険等');
+  if(ins){
+    const found=[];
+    if(/雇用/.test(ins))found.push('雇用保険');
+    if(/労災/.test(ins))found.push('労災保険');
+    if(/健康/.test(ins))found.push('健康保険');
+    if(/厚生年金|厚生/.test(ins))found.push('厚生年金');
+    if(found.length>=4)L.push('社会保険完備（雇用保険・労災保険・健康保険・厚生年金）');
+    else if(found.length)L.push(found.join('・')+' 加入');
+    else L.push(ins.replace(/[，,]/g,'、'));
+  }
+  // 退職金
+  const re=vr(row,'退職金制度');
+  if(re.includes('あり')){const mm=re.match(/(\d+)年以上/);L.push(mm?`退職金制度あり（勤続${mm[1]}年以上）`:'退職金制度あり');}
+  else if(vr(row,'退職金共済').includes('あり'))L.push('退職金共済あり');
+  // 定年・再雇用
+  const fr=vr(row,'定年制');
+  if(fr.includes('あり')){const mm=fr.match(/一律\s*(\d+)歳/);L.push(mm?`定年制あり（一律${mm[1]}歳）`:'定年制あり');}
+  const reE=vr(row,'再雇用制度');
+  if(reE.includes('あり')){const mm=reE.match(/上限\s*(\d+)歳/);L.push(mm?`再雇用制度あり（上限${mm[1]}歳）`:'再雇用制度あり');}
+  // 託児施設
+  if(vr(row,'利用可能託児施設').includes('あり'))L.push('利用可能託児施設あり');
+  // 受動喫煙対策（就業場所欄から転記）
+  const wp=vr(row,'就業場所');
+  if(wp.includes('屋内禁煙'))L.push('受動喫煙対策あり（屋内禁煙）');
+  else if(wp.includes('敷地内禁煙'))L.push('受動喫煙対策あり（敷地内禁煙）');
+  else if(wp.includes('喫煙室')||wp.includes('喫煙可'))L.push('受動喫煙対策あり（喫煙室設置）');
+  // マイカー通勤
+  const mc=vr(row,'マイカー通勤');
+  if(mc.includes('可'))L.push(mc.includes('無料')?'マイカー通勤可（無料駐車場あり）':'マイカー通勤可');
+  else if(vr(row,'駐車場').includes('あり'))L.push('マイカー通勤可（駐車場あり）');
+  // 福利厚生の内容から重複しないものを追加（社員食堂など）
+  const wf=vr(row,'福利厚生の内容');
+  if(wf){const ex=L.join('\n');wf.split(/[　\n]+/).forEach(it=>{it=it.trim();if(it&&!ex.includes(it))L.push(it);});}
+  // 求人特記事項から社員食堂等を拾う
+  const note=vr(row,'求人に関する特記事項');
+  if(note){
+    const ex=L.join('\n');
+    ['社員食堂','無料駐車場','制服貸与','寮あり','社宅あり'].forEach(k=>{if(note.includes(k)&&!ex.includes(k))L.push(k);});
+  }
+  return L.join('\n');
+};
 const bReq=row=>{const L=[];const lq=vr(row,'必要な免許・資格');if(lq){lq.replace('免許・資格名','').trim().split(/\s{2,}/).forEach(it=>{it=it.trim();if(!it||it==='必須')return;if(it.includes('必須')){const n=it.replace('必須','').trim();L.push(`${n}必須`.trim());}else L.push(it);});}const exp=vr(row,'必要な経験等');if(exp&&exp.includes('必須')){const b=exp.replace('必要な経験・知識・技能等','').replace('必須','').trim();if(b)L.push(`${b}（必須）`);}const ag=vr(row,'年齢');if(ag){const m=ag.match(/(\d+)歳(?:以下|未満)/);if(m)L.push(`${m[1]}歳以下（定年上限のため）`);else if(ag.includes('不問'))L.push('年齢不問');}const ed=vr(row,'学歴');if(ed)L.push(ed.includes('不問')?'学歴不問':ed);return L.join('\n');};
 const bWel=row=>{const L=[],exp=vr(row,'必要な経験等');if(exp.includes('あれば尚可')){const b=exp.replace('必要な経験・知識・技能等','').replace('あれば尚可','').trim();if(b)L.push(`${b}あれば尚可`);}return L.join('\n');};
-const convertRow=row=>{const hwT=vr(row,'職種');const{j,c}=guessJob(hwT);const[sl,sh]=getSal(vr(row,'ａ ＋ ｂ （固定残業代がある場合はａ ＋ ｂ ＋ ｃ）'));const msg=vr(row,'事業所からのメッセージ');return{"求人ID":vr(row,'A_転記_C列')||vr(row,'求人番号'),"施設ID":'',"施設名":vr(row,'施設名')||vr(row,'事業所名'),"職種カテゴリ名":c,"職種名":j,"掲載状況":'掲載中',"雇用形態":getEmp(vr(row,'雇用形態')),"給与下限":sl??'',"給与上限":sh??'',"給与の備考":bSal(row),"訴求文タイトル":msg?msg.split('\n')[0].slice(0,60):'',"訴求文":msg,"仕事内容":vr(row,'仕事内容'),"応募要件":bReq(row),"歓迎要件":bWel(row),"勤務時間":bH(row),"休日":bHol(row),"長期休暇・特別休暇":bSp(row),"待遇":bBen(row),"教育体制・研修":vr(row,'研修制度'),"都道府県":getPref(vr(row,'就業場所')),"_HW求人番号":vr(row,'求人番号'),"_HW職種（原文）":hwT};};
+// 仕事内容（本文＋変更の範囲＋転勤の可能性）
+const bJob=row=>{
+  const L=[];
+  const main=vr(row,'仕事内容');
+  if(main)L.push(main);
+  // 変更の範囲
+  const henkou=vr(row,'変更の範囲')||vr(row,'就業場所（変更の範囲）')||vr(row,'業務内容（変更の範囲）');
+  if(henkou){L.push('');L.push(`（変更の範囲）${henkou}`);}
+  else if(main&&!main.includes('変更の範囲')){L.push('');L.push('（変更の範囲）変更なし');}
+  // 転勤の可能性
+  const tenkin=vr(row,'転勤の可能性');
+  const tenkinRange=vr(row,'転勤範囲');
+  if(tenkin){
+    if(tenkin.includes('あり'))L.push(`転勤あり${tenkinRange?`（範囲:${tenkinRange}）`:''}`);
+    else if(tenkin.includes('なし'))L.push('転勤なし');
+  }
+  return L.join('\n');
+};
+const convertRow=row=>{const hwT=vr(row,'職種');const{j,c}=guessJob(hwT);const[sl,sh]=getSal(vr(row,'ａ ＋ ｂ （固定残業代がある場合はａ ＋ ｂ ＋ ｃ）'));const msg=vr(row,'事業所からのメッセージ');return{"求人ID":vr(row,'A_転記_C列')||vr(row,'求人番号'),"施設ID":'',"施設名":vr(row,'施設名')||vr(row,'事業所名'),"職種カテゴリ名":c,"職種名":j,"掲載状況":'掲載中',"雇用形態":getEmp(vr(row,'雇用形態')),"給与下限":sl??'',"給与上限":sh??'',"給与の備考":bSal(row),"訴求文タイトル":msg?msg.split('\n')[0].slice(0,60):'',"訴求文":msg,"仕事内容":bJob(row),"応募要件":bReq(row),"歓迎要件":bWel(row),"勤務時間":bH(row),"休日":bHol(row),"長期休暇・特別休暇":bSp(row),"待遇":bBen(row),"教育体制・研修":vr(row,'研修制度'),"都道府県":getPref(vr(row,'就業場所')),"_HW求人番号":vr(row,'求人番号'),"_HW職種（原文）":hwT};};
 
 // ============================================================
 // OPENAI API
