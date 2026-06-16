@@ -78,11 +78,13 @@ tr:nth-child(even) td{background:#fafafa}
 <div class="tabs">
   <button class="tab active" id="tab-single" onclick="switchTab('single')">📄 単票変換（PDF / 画像）</button>
   <button class="tab" id="tab-batch" onclick="switchTab('batch')">📊 CSV一括変換（ハロワ→JM）</button>
+  <button class="tab" id="tab-copy" onclick="switchTab('copy')">✍️ 求人原稿・訴求文</button>
 </div>
 
 <div class="page">
   <div id="single-pane"></div>
   <div id="batch-pane" style="display:none"></div>
+  <div id="copy-pane" style="display:none"></div>
 </div>
 
 <!-- API Key Modal -->
@@ -165,6 +167,72 @@ const GROUPS=[
   ]}
 ];
 const ALL_ITEMS=GROUPS.flatMap(g=>g.items);
+
+// ============================================================
+// ★ 訴求キーワード初期設定（ここを編集すれば初期キーワードを差し替え可）
+//   ※画面上の「⚙ キーワードを編集」からも変更でき、その内容はブラウザに保存されます
+// ============================================================
+const COPY_KW_DEFAULT = [
+  "駅近・通勤しやすい",
+  "残業少なめ",
+  "年間休日が多い",
+  "未経験・ブランクOK",
+  "教育・研修が充実",
+  "子育て・家庭と両立しやすい",
+  "有給を取りやすい",
+  "経営が安定",
+  "最新設備・きれいな環境",
+  "キャリアアップできる"
+];
+
+// 求人票の事実だけを抽出するためのプロンプト（STEP1・画像→JSON）
+const FACT_PROMPT = `求人票（PDF画像・複数ページの場合あり）から、求人原稿作成に必要な情報を抽出し、JSONのみ出力する（コードブロックや説明文は不要）。複数ページは1件の求人として統合する。記載が無い項目は空文字にする。読み取れた事実のみを入れ、推測で創作しない。
+出力キー: {"会社名":"","施設名":"","職種":"","業種":"","仕事内容":"","応募資格":"","勤務地":"","雇用形態":"","福利厚生":"","企業PR":"","給与":"","勤務時間":"","休日":"","教育体制":"","その他":""}`;
+
+// 求人原稿・訴求文を生成するためのプロンプト（STEP2・facts+キーワード→JSON）
+const COPY_PROMPT = `あなたはプロの採用コンサルタント兼求人ライターです。与えられた求人情報（JSON）と追加キーワードをもとに、求人票・求人媒体に掲載する文章を作成し、JSONのみで出力します（コードブロックや説明文は不要）。
+
+# 出力するJSONの形式
+{"職種提案":["","","","",""],"仕事内容":"","特記事項":"","訴求文タイトル":["","","","",""],"訴求文":""}
+
+# 各項目の条件
+## 職種提案（配列・5案）
+- 各28文字以内。職種名を先頭に入れる。
+- 仕事内容が伝わり、求職者が興味を持つ表現にする。
+- 5案は表現を変え、同じ言い回しの繰り返しを避ける。
+
+## 仕事内容（文章形式・目安360〜450文字）
+- 実際の業務内容を具体的に書き、入社後の働き方がイメージできるようにする。
+- スマホ閲覧を想定し、最初の約100文字に最もキャッチーで目を引く要点（職種・職場の魅力・働き方）を集約し、その後に詳細を続ける。
+- 求職者が検索・反応しやすいキーワード（職種名・勤務地・働き方・職場の特徴など）を自然に盛り込む。
+- 仕事のやりがいや成長できる点を含める。情報が不足する場合は職種・業界から自然に補える範囲で補足する（事実と矛盾する創作はしない）。
+- 特記事項と内容が重複しないようにする。
+
+## 特記事項（文章形式・目安550〜600文字）
+- 福利厚生、職場の雰囲気、チーム文化、教育体制、サポート体制、キャリア形成、働きやすさを魅力的に書く。
+- スマホ閲覧を想定し、最初の約100文字に最も魅力的な要点を集約し、その後に詳細を続ける。
+- 求職者が検索・反応しやすいキーワードを自然に盛り込む。
+- 元の求人情報をそのまま引用せず、自然な表現に言い換える。箇条書きは使わず文章形式。
+- 応募手続きや選考については簡潔に触れる。給与、賞与、勤務時間、年間休日には触れない。
+
+## 訴求文タイトル（配列・5案／ジョブメドレー型）
+- 求職者が思わずクリックしたくなる、媒体の見出しらしい魅力的なタイトル。
+- 各60文字以内。5案は切り口を変え、重複を避ける。
+
+## 訴求文（ジョブメドレー掲載用の紹介本文・最初からスマホ最適化＆SEO増量・目安550〜600文字）
+- 施設・職場の魅力が伝わる紹介文を、最初からスマホで読みやすい形で作成する。
+- 冒頭の約100文字に、最も伝えたい魅力（職種・職場の強み・働き方）を凝縮したキャッチーなリード文を置く。
+- その後は内容に応じて【働きやすさ】【教育・サポート】【キャリア】などの小見出しや段落・改行で区切り、つながった長文にせず、適宜改行して読みやすくする。
+- 求職者が検索・反応しやすいキーワード（職種名・勤務地・働き方・福利厚生・職場の特徴など）を自然に多めに盛り込み、十分な情報量（550〜600字程度）にする。
+- 不自然な誇張は避け、給与・賞与・勤務時間・年間休日には触れない。
+
+# 追加キーワードの扱い
+- 追加キーワードがある場合、その内容を「訴求文タイトル」と「訴求文」に必ず自然に反映する。
+- キーワードが事実と矛盾する場合は無理に断定せず、表現を調整する。指定が無い場合は通常どおり作成する。
+
+# 文体・コンプライアンス
+- 求職者向けに分かりやすく、丁寧でプロフェッショナルに。不自然な誇張や専門用語の多用、同一表現の繰り返しを避ける。
+- 性別や年齢を限定・除外する表現（「女性のみ」「○歳まで」等）は、たとえ元情報にあっても出力に含めない。`;
 const JM_OUT=["求人ID","施設ID","施設名","職種カテゴリ名","職種名","掲載状況","雇用形態","給与下限（正・契＝月給、パ＝時給）","給与上限（正・契＝月給、パ＝時給）","給与の備考","訴求文タイトル","訴求文","仕事内容","応募要件","歓迎要件","勤務時間","休日","長期休暇・特別休暇","待遇","教育体制・研修","都道府県"];
 const SYS_PROMPT=`求人票（画像・複数ページの場合あり）から情報を抽出しジョブメドレー形式のJSONのみ出力（コードブロック・説明文不要）。複数ページは1件の求人として統合する。
 
@@ -493,7 +561,8 @@ const dlCSV = recs => {
 // ============================================================
 const S = {
   single:{file:null,previewUrls:null,loading:false,loadMsg:'',jm:null,miss:[],err:'',saveMsg:'',dOpen:false},
-  batch: {file:null,conv:false,prog:0,done:0,total:0,results:[],err:''}
+  batch: {file:null,conv:false,prog:0,done:0,total:0,results:[],err:''},
+  copy:  {file:null,previewUrls:null,reading:false,gen:false,loadMsg:'',facts:null,out:null,err:'',kwList:loadKW(),kwSel:new Set(),kwEdit:false,view:{},busyField:''}
 };
 
 // ============================================================
@@ -639,11 +708,12 @@ function renderBatch() {
 // EVENT HANDLERS
 // ============================================================
 function switchTab(id) {
-  ['single','batch'].forEach(t => {
+  ['single','batch','copy'].forEach(t => {
     document.getElementById(`tab-${t}`).className='tab'+(t===id?' active':'');
     document.getElementById(`${t}-pane`).style.display=t===id?'':'none';
   });
   if (id==='batch') renderBatch();
+  if (id==='copy') renderCopy();
 }
 function sDrop(e){e.preventDefault();const f=e.dataTransfer.files[0];if(f)sFile(f);}
 function bDrop(e){e.preventDefault();const f=e.dataTransfer.files[0];if(f)bFile(f);}
@@ -725,6 +795,284 @@ function saveApiKey(){
   alert('✅ APIキーを保存しました。\n\nAI変換ボタンで求人票のPDF・画像を変換できます。');
 }
 function updateApiBanner(){document.getElementById('api-banner').className='api-banner'+(getApiKey()?' hidden':'');}
+
+// ============================================================
+// ✍️ COPY TAB （求人原稿・訴求文）
+// ============================================================
+const clen = s => [...String(s||'')].length;
+function jsStr(s){ return esc(JSON.stringify(String(s==null?'':s))); }
+function cnt(id,val,max){ const e=document.getElementById(id); if(!e)return; const n=clen(val); e.textContent=n+' / '+max; e.style.color=n>max?'#e53935':'#999'; }
+
+// --- keyword storage ---
+function loadKW(){ try{ const s=JSON.parse(localStorage.getItem('jm_copy_kw')); if(Array.isArray(s)&&s.length) return s; }catch(e){} return COPY_KW_DEFAULT.slice(); }
+function saveKW(arr){ localStorage.setItem('jm_copy_kw', JSON.stringify(arr)); }
+
+// --- OpenAI helpers (copy tab) ---
+async function callVision(images, sys){
+  const apiKey=getApiKey();
+  if(!apiKey) throw new Error('APIキーが未設定です。右上「⚙ OpenAI APIキー設定」から設定してください。');
+  const imgs=images.map(im=>({type:'image_url',image_url:{url:`data:${im.mimeType};base64,${im.base64}`,detail:'high'}}));
+  const note=images.length>1?`この求人票は${images.length}ページで1セットです。全ページを統合して1件として扱ってください。`:'この求人票の情報を抽出してください。';
+  const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2000,messages:[{role:'system',content:sys},{role:'user',content:[...imgs,{type:'text',text:note}]}]})});
+  if(!res.ok){let m=`HTTP ${res.status}`;try{const d=await res.json();m=d.error?.message||m;}catch(e){}throw new Error('OpenAI API エラー: '+m);}
+  const d=await res.json(); return d.choices[0].message.content;
+}
+async function callText(sys, user){
+  const apiKey=getApiKey();
+  if(!apiKey) throw new Error('APIキーが未設定です。右上「⚙ OpenAI APIキー設定」から設定してください。');
+  const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2500,messages:[{role:'system',content:sys},{role:'user',content:user}]})});
+  if(!res.ok){let m=`HTTP ${res.status}`;try{const d=await res.json();m=d.error?.message||m;}catch(e){}throw new Error('OpenAI API エラー: '+m);}
+  const d=await res.json(); return d.choices[0].message.content;
+}
+function parseJSON(txt){ const c=String(txt||'').replace(/^```(?:json)?\s*|\s*```$/gm,'').trim(); return JSON.parse(c); }
+
+// --- clipboard / toast ---
+function copyText(t){ const s=String(t==null?'':t); if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(s).then(()=>toast('コピーしました')).catch(()=>fbCopy(s));} else fbCopy(s); }
+function fbCopy(s){ const ta=document.createElement('textarea'); ta.value=s; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');toast('コピーしました');}catch(e){} document.body.removeChild(ta); }
+function toast(m){ let t=document.getElementById('cp-toast'); if(!t){t=document.createElement('div');t.id='cp-toast';t.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#323232;color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;z-index:9999;opacity:0;transition:opacity .2s;pointer-events:none';document.body.appendChild(t);} t.textContent=m; t.style.opacity='1'; clearTimeout(window._cptt); window._cptt=setTimeout(()=>{t.style.opacity='0';},1400); }
+
+// --- file handling ---
+function cDrop(e){ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f)cFile(f); }
+function cFile(f){ if(!f)return; S.copy={...S.copy,file:f,previewUrls:null,facts:null,out:null,err:'',loadMsg:''};
+  if(f.type.startsWith('image/')){ const r=new FileReader(); r.onload=e=>{S.copy.previewUrls=[e.target.result];renderCopy();}; r.readAsDataURL(f); } else renderCopy(); }
+function cClear(){ S.copy={...S.copy,file:null,previewUrls:null,facts:null,out:null,err:'',loadMsg:''}; renderCopy(); }
+
+// --- STEP 1: read job ticket ---
+async function doFactExtract(){
+  if(!S.copy.file)return;
+  if(!getApiKey()){alert('先に右上の「⚙ OpenAI APIキー設定」からキーを設定してください。');return;}
+  S.copy.reading=true;S.copy.err='';S.copy.loadMsg='';renderCopy();
+  try{
+    const f=S.copy.file; let images;
+    if(f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf')){
+      images=await pdfToImages(f,(p,t)=>{S.copy.loadMsg=`PDFを画像化中... (${p}/${t}ページ)`;renderCopy();});
+      S.copy.previewUrls=images.map(im=>im.previewUrl);
+    }else{
+      const img=await imgToBase64(f); images=[img]; S.copy.previewUrls=[img.previewUrl];
+    }
+    S.copy.loadMsg=`${images.length}ページをAIで読み取り中...`;renderCopy();
+    const raw=await callVision(images,FACT_PROMPT);
+    S.copy.facts=parseJSON(raw);
+    S.copy.out=null;
+  }catch(e){ S.copy.err='読み取りエラー: '+e.message; }
+  finally{ S.copy.reading=false; S.copy.loadMsg=''; renderCopy(); }
+}
+
+// --- STEP 2: generate copy ---
+async function doGenCopy(){
+  if(!S.copy.facts){alert('先にSTEP 1で求人票を読み取ってください。');return;}
+  S.copy.gen=true;S.copy.err='';renderCopy();
+  try{
+    const kws=[...S.copy.kwSel];
+    const user='【求人情報(JSON)】\n'+JSON.stringify(S.copy.facts,null,1)+'\n\n【追加キーワード】\n'+(kws.length?kws.join('、'):'（指定なし）')+'\n\n上記をもとに、指定のJSON形式で出力してください。';
+    const raw=await callText(COPY_PROMPT,user);
+    S.copy.out=parseJSON(raw);
+  }catch(e){ S.copy.err='生成エラー: '+e.message; }
+  finally{ S.copy.gen=false; renderCopy(); }
+}
+
+// --- keyword UI handlers ---
+function kwToggle(k){ if(S.copy.kwSel.has(k))S.copy.kwSel.delete(k); else S.copy.kwSel.add(k); renderCopy(); }
+function kwAdd(){ const inp=document.getElementById('kw-add-input'); if(!inp)return; const v=inp.value.trim(); if(!v)return;
+  if(!S.copy.kwList.includes(v)){S.copy.kwList.push(v);saveKW(S.copy.kwList);} S.copy.kwSel.add(v); inp.value=''; renderCopy(); }
+function kwEditToggle(){ S.copy.kwEdit=!S.copy.kwEdit; renderCopy(); }
+function kwEditSave(){ const ta=document.getElementById('kw-edit-ta'); if(!ta)return;
+  const arr=ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+  S.copy.kwList=arr.length?arr:COPY_KW_DEFAULT.slice(); saveKW(S.copy.kwList);
+  [...S.copy.kwSel].forEach(k=>{ if(!S.copy.kwList.includes(k)) S.copy.kwSel.delete(k); });
+  S.copy.kwEdit=false; renderCopy(); }
+function kwEditReset(){ S.copy.kwList=COPY_KW_DEFAULT.slice(); saveKW(S.copy.kwList); S.copy.kwEdit=false; renderCopy(); }
+
+// --- edit handlers (keep focus: update state only, recompute count inline) ---
+function cpEditArr(key,i,v){ if(S.copy.out&&Array.isArray(S.copy.out[key])) S.copy.out[key][i]=v; }
+function cpEditStr(key,v){ if(S.copy.out) S.copy.out[key]=v; }
+
+// --- per-field refine (targeted, token-light) ---
+const REFINE_SYS = `あなたはプロの採用コンサルタント兼求人ライターです。指示に従って与えられた文章を書き換え、書き換え後の本文だけを返します（前置き・説明・コードブロックは不要）。性別や年齢を限定・除外する表現は使いません。`;
+const INSTR_EXPAND_JOB = 'スマホ閲覧を想定し、最初の約100文字に最もキャッチーで目を引く要点（職種・職場の魅力・働き方）を集約し、その後に詳細を続ける。求職者が検索・反応しやすいキーワード（職種名・勤務地・働き方・職場の特徴など）を自然に増やし、全体の文字数を今より増やす（目安500〜600字）。箇条書きにせず文章形式。不自然な誇張は避ける。';
+const INSTR_EXPAND_NOTE = 'スマホ閲覧を想定し、最初の約100文字に最も魅力的な要点を集約し、その後に詳細を続ける。求職者が検索・反応しやすいキーワード（福利厚生・雰囲気・教育体制・働きやすさ・勤務地など）を自然に増やし、全体の文字数を今より増やす（目安700〜800字）。箇条書きにせず文章形式。給与・賞与・勤務時間・年間休日には触れない。';
+const INSTR_POINTS = '内容を、求人ページで読みやすい「ポイント型」に整える。まず冒頭に、最初の約100文字で魅力が伝わる1〜2文のリード文を置き、続けて「・」で始まる箇条書き5〜8項目で要点を簡潔に整理する。元の内容に基づき、新たな事実は創作しない。';
+const INSTR_POINTS_NOTE = INSTR_POINTS + ' 給与・賞与・勤務時間・年間休日には触れない。';
+const INSTR_RESTRUCT = 'スマホで読みやすいように整える。最初の約100文字に最も伝えたい魅力を集約する。その後は内容に応じて【働きやすさ】【教育・サポート】【キャリア】などの小見出しや段落・改行で区切り、読みやすくする。全体は600文字程度まで増やしてよい。';
+
+function factsBrief(){ const f=S.copy.facts||{}; const ks=['会社名','施設名','職種','業種','勤務地','雇用形態','福利厚生','企業PR','教育体制','仕事内容']; const o={}; ks.forEach(k=>{if(f[k])o[k]=f[k];}); return JSON.stringify(o); }
+
+async function refineField(field, storeKey, instr){
+  if(!S.copy.out) return;
+  S.copy.busyField=storeKey; S.copy.err=''; renderCopy();
+  try{
+    const cur=S.copy.out[storeKey]||S.copy.out[field]||'';
+    const user=`【参考情報(JSON)】\n${factsBrief()}\n\n【現在の文章】\n${cur}\n\n【書き換え指示】\n${instr}`;
+    const raw=await callText(REFINE_SYS,user);
+    S.copy.out[storeKey]=String(raw||'').replace(/^```[a-z]*\s*|\s*```$/g,'').trim();
+  }catch(e){ S.copy.err='書き換えエラー: '+e.message; }
+  finally{ S.copy.busyField=''; renderCopy(); }
+}
+function setView(field,mode){
+  if(!S.copy.view)S.copy.view={}; S.copy.view[field]=mode;
+  const pk=field+'_pt';
+  if(mode==='points' && !(S.copy.out[pk]&&S.copy.out[pk].trim())){
+    refineField(field, pk, field==='特記事項'?INSTR_POINTS_NOTE:INSTR_POINTS);
+  }else{ renderCopy(); }
+}
+function doExpand(field){ refineField(field, field, field==='特記事項'?INSTR_EXPAND_NOTE:INSTR_EXPAND_JOB); }
+function doInstruct(field, inputId){
+  const el=document.getElementById(inputId); if(!el)return; const v=el.value.trim();
+  if(!v){alert('書き換えの指示を入力してください。');return;}
+  const pk=field+'_pt';
+  const storeKey=(S.copy.view&&S.copy.view[field]==='points')?pk:field;
+  refineField(field, storeKey, '次の指示に従って書き換える: '+v);
+}
+function doRestructure(){ refineField('訴求文','訴求文', INSTR_RESTRUCT); }
+
+// --- render ---
+function renderCopy(){
+  const c=S.copy, p=document.getElementById('copy-pane'); if(!p)return;
+  const hasKey=!!getApiKey();
+
+  // STEP 1
+  let fileBox;
+  if(!c.file){
+    fileBox=`<div class="dz" onclick="document.getElementById('cp-file').click()" ondragover="event.preventDefault()" ondrop="cDrop(event)">
+      <div style="font-size:34px;margin-bottom:6px">✍️</div>
+      <div style="font-weight:700;margin-bottom:4px">求人票（PDF / 画像）をドロップ</div>
+      <div style="font-size:12px;color:#888">またはクリックして選択　※ハロワ求人票など複数ページPDFもそのままOK</div>
+    </div>`;
+  }else{
+    fileBox=`<div class="dz ok" style="text-align:left;cursor:default">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:22px">📎</span><span style="font-weight:700">${esc(c.file.name)}</span>
+        <button class="btn-del" style="margin-left:auto" onclick="cClear()">取り消す</button>
+      </div></div>`;
+  }
+  let prev='';
+  if(c.previewUrls&&c.previewUrls.length){
+    prev=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${c.previewUrls.map(u=>`<img src="${u}" style="height:130px;border:1px solid #ddd;border-radius:6px">`).join('')}</div>`;
+  }
+  let readBtn=`<button class="btn" style="margin-top:12px" onclick="doFactExtract()" ${(!c.file||c.reading||!hasKey)?'disabled':''}>${c.reading?'読み取り中...':(c.facts?'↻ もう一度読み取る':'① 求人票を読み取る')}</button>`;
+  if(!hasKey) readBtn+=`<span style="font-size:12px;color:#e53935;margin-left:10px">→ 右上でAPIキーを設定してください</span>`;
+  let status='';
+  if(c.loadMsg) status+=`<div class="a-info" style="margin-top:10px">⏳ ${esc(c.loadMsg)}</div>`;
+  if(c.err) status+=`<div class="a-err" style="margin-top:10px">${esc(c.err)}</div>`;
+  let facts='';
+  if(c.facts){
+    const f=c.facts; const rows=[['会社名',f['会社名']||f['施設名']],['職種',f['職種']],['業種',f['業種']],['勤務地',f['勤務地']],['仕事内容',f['仕事内容']]];
+    facts=`<div style="margin-top:14px"><div class="sec-label">読み取り結果（この内容をもとに原稿を作成します）</div>
+      <div style="font-size:12px;color:#555;line-height:1.8">${rows.filter(r=>r[1]).map(r=>`<div><b style="color:#1F497D">${r[0]}：</b>${esc(String(r[1]).slice(0,100))}${String(r[1]).length>100?'…':''}</div>`).join('')}</div></div>`;
+  }
+  const sec1=`<div class="card"><div class="sec-label">STEP 1 ・ 求人票を読み込む</div>
+    ${fileBox}${prev}${readBtn}${status}${facts}
+    <input type="file" id="cp-file" accept="application/pdf,image/*" style="display:none" onchange="cFile(this.files[0])"></div>`;
+
+  // STEP 2 (keywords)
+  const chips=c.kwList.map(k=>{const on=c.kwSel.has(k);
+    return `<button onclick="kwToggle(${jsStr(k)})" style="border:1px solid ${on?'#1F497D':'#ccc'};background:${on?'#1F497D':'#fff'};color:${on?'#fff':'#444'};border-radius:16px;padding:5px 13px;font-size:12.5px;cursor:pointer;font-family:inherit;font-weight:${on?'700':'400'}">${on?'✓ ':''}${esc(k)}</button>`;}).join('');
+  let kwEditBox='';
+  if(c.kwEdit){
+    kwEditBox=`<div style="margin-top:12px;background:#f8f9fb;border:1px solid #e0e0e0;border-radius:8px;padding:12px">
+      <div style="font-size:12px;color:#666;margin-bottom:6px">1行に1キーワード。ここを書き換えて保存すると、チップ一覧を差し替えられます（ブラウザに保存されます）。</div>
+      <textarea id="kw-edit-ta" rows="9" style="font-size:13px">${esc(c.kwList.join('\n'))}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn" style="padding:6px 16px;font-size:13px" onclick="kwEditSave()">保存</button>
+        <button class="btn-sec" onclick="kwEditToggle()">キャンセル</button>
+        <button class="btn-del" style="margin-left:auto" onclick="kwEditReset()">初期値に戻す</button>
+      </div></div>`;
+  }
+  const sec2=`<div class="card" style="margin-top:14px"><div class="sec-label">STEP 2 ・ 訴求キーワードを選ぶ（任意）</div>
+    <div style="font-size:12.5px;color:#666;margin-bottom:10px">選んだキーワードに沿った内容が「訴求文タイトル」と「訴求文」に反映されます。複数選択できます。</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${chips}
+      <button class="btn-sec" style="font-size:12px" onclick="kwEditToggle()">⚙ キーワードを編集</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px;max-width:440px">
+      <input type="text" id="kw-add-input" placeholder="自由にキーワードを追加（例：賞与年3回）" style="font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();kwAdd();}">
+      <button class="btn-sec" style="white-space:nowrap" onclick="kwAdd()">＋ 追加</button></div>
+    ${kwEditBox}
+    <div style="margin-top:16px"><button class="btn green" onclick="doGenCopy()" ${(!c.facts||c.gen)?'disabled':''}>${c.gen?'生成中...':(c.out?'↻ この内容で再生成':'② 原稿を生成する')}</button>
+      ${!c.facts?'<span style="font-size:12px;color:#888;margin-left:10px">先にSTEP 1で読み取ってください</span>':''}</div></div>`;
+
+  // OUTPUT
+  let out='';
+  if(c.out){
+    const o=c.out;
+    const jobs=Array.isArray(o['職種提案'])?o['職種提案']:[];
+    const titles=Array.isArray(o['訴求文タイトル'])?o['訴求文タイトル']:[];
+    const jobRows=jobs.slice(0,5).map((t,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+       <span style="color:#aaa;font-size:12px;width:14px">${i+1}</span>
+       <input type="text" value="${esc(t)}" oninput="cpEditArr('職種提案',${i},this.value);cnt('cc_job_${i}',this.value,28)" style="font-size:13px">
+       <span id="cc_job_${i}" style="font-size:11px;white-space:nowrap;width:50px;text-align:right;color:${clen(t)>28?'#e53935':'#999'}">${clen(t)} / 28</span>
+       <button class="btn-sec" style="padding:4px 9px;font-size:11px" onclick="copyText(${jsStr(t)})">📋</button></div>`).join('');
+    const titleRows=titles.slice(0,5).map((t,i)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+       <span style="color:#aaa;font-size:12px;width:14px">${i+1}</span>
+       <input type="text" value="${esc(t)}" oninput="cpEditArr('訴求文タイトル',${i},this.value);cnt('cc_title_${i}',this.value,60)" style="font-size:13px">
+       <span id="cc_title_${i}" style="font-size:11px;white-space:nowrap;width:50px;text-align:right;color:${clen(t)>60?'#e53935':'#999'}">${clen(t)} / 60</span>
+       <button class="btn-sec" style="padding:4px 9px;font-size:11px" onclick="copyText(${jsStr(t)})">📋</button></div>`).join('');
+
+    // 仕事内容 / 特記事項：文章型⇄ポイント型トグル + SEO増量 + 指示書き換え
+    const bigField=(field,label,targetNote)=>{
+      const view=(c.view&&c.view[field])||'prose';
+      const isPt=view==='points';
+      const storeKey=isPt?field+'_pt':field;
+      const val=o[storeKey]||'';
+      const busy=c.busyField===storeKey;
+      const cid='cc_'+field, iid='instr_'+field;
+      const toggle=`<span style="display:inline-flex;border:1px solid #1F497D;border-radius:6px;overflow:hidden;font-size:11px">
+         <button onclick="setView('${field}','prose')" style="border:none;padding:4px 11px;cursor:pointer;font-family:inherit;background:${!isPt?'#1F497D':'#fff'};color:${!isPt?'#fff':'#1F497D'}">文章型</button>
+         <button onclick="setView('${field}','points')" style="border:none;padding:4px 11px;cursor:pointer;font-family:inherit;background:${isPt?'#1F497D':'#fff'};color:${isPt?'#fff':'#1F497D'}">ポイント型</button></span>`;
+      const expandBtn=!isPt?`<button class="btn-sec" style="padding:5px 12px;font-size:12px" onclick="doExpand('${field}')" ${busy?'disabled':''}>➕ 文字数を増やす（SEO）</button>`:'';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 6px;flex-wrap:wrap;gap:6px">
+           <span style="font-weight:700;font-size:13px">${label}</span>
+           <span style="display:flex;gap:8px;align-items:center">${toggle}
+             <span id="${cid}" style="font-size:12px;color:#999">${clen(val)} 文字</span>
+             <button class="btn-sec" style="padding:4px 10px;font-size:11px" onclick="copyText(${jsStr(val)})">📋 コピー</button></span></div>
+         ${busy?'<div class="a-info" style="margin:0 0 6px">⏳ AIで書き換え中...（少々お待ちください）</div>':''}
+         <textarea rows="${isPt?9:7}" oninput="cpEditStr('${storeKey}',this.value);document.getElementById('${cid}').textContent=clen(this.value)+' 文字'" style="font-size:13px">${esc(val)}</textarea>
+         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">${expandBtn}<span style="font-size:11px;color:#aaa">${targetNote}</span></div>
+         <div style="display:flex;gap:6px;margin-top:8px">
+           <input type="text" id="${iid}" placeholder="この項目への変更指示（例：チームの雰囲気を前面に／〇〇を追記）" style="font-size:12.5px" ${busy?'disabled':''}>
+           <button class="btn-sec" style="white-space:nowrap" onclick="doInstruct('${field}','${iid}')" ${busy?'disabled':''}>指示で書き換え</button></div>`;
+    };
+
+    // 訴求文：600字・小見出し/改行で整える
+    const ab=c.busyField==='訴求文';
+    const appealBlock=`<div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 6px;flex-wrap:wrap;gap:6px">
+         <span style="font-weight:700;font-size:13px">■ 訴求文（スマホ向けに改行・小見出しで整理）</span>
+         <span style="display:flex;gap:8px;align-items:center">
+           <span id="cc_appeal" style="font-size:12px;color:${clen(o['訴求文'])>600?'#e53935':'#999'}">${clen(o['訴求文'])} / 600</span>
+           <button class="btn-sec" style="padding:4px 10px;font-size:11px" onclick="copyText(${jsStr(o['訴求文'])})">📋 コピー</button></span></div>
+       ${ab?'<div class="a-info" style="margin:0 0 6px">⏳ AIで整形中...</div>':''}
+       <textarea rows="12" oninput="cpEditStr('訴求文',this.value);cnt('cc_appeal',this.value,600)" style="font-size:13px">${esc(o['訴求文'])}</textarea>
+       <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
+         <button class="btn-sec" style="padding:5px 12px;font-size:12px" onclick="doRestructure()" ${ab?'disabled':''}>↻ スマホ向けに整える（小見出し・改行）</button>
+         <input type="text" id="instr_訴求文" placeholder="変更指示（例：教育体制を強調）" style="font-size:12.5px;flex:1;min-width:150px" ${ab?'disabled':''}>
+         <button class="btn-sec" style="white-space:nowrap" onclick="doInstruct('訴求文','instr_訴求文')" ${ab?'disabled':''}>指示で書き換え</button></div>`;
+
+    out=`<div class="card" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="sec-label" style="border:none;margin:0;padding:0">生成結果（その場で編集・AIで書き換えできます）</div>
+        <button class="btn-sec" onclick="copyAllCopy()">📋 すべてコピー</button></div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">※「文字数を増やす」「指示で書き換え」「ポイント型」「整える」は、押した項目だけをAIに送る軽量処理です（1回ごとに少額の利用料）。</div>
+
+      <div style="font-weight:700;font-size:13px;margin:14px 0 8px">■ 職種の提案（各28文字以内）</div>${jobRows}
+
+      ${bigField('仕事内容','■ 仕事内容','目安360〜600字')}
+      ${bigField('特記事項','■ 特記事項','目安600〜800字')}
+
+      <div style="border-top:1px dashed #ddd;margin:22px 0 14px"></div>
+      <div style="font-weight:700;font-size:13px;margin:4px 0 8px">■ 訴求文タイトル（ジョブメドレー型・各60文字以内）</div>${titleRows}
+
+      ${appealBlock}
+    </div>`;
+  }
+  p.innerHTML=sec1+sec2+out;
+}
+
+function copyAllCopy(){
+  const o=S.copy.out; if(!o)return; const v=S.copy.view||{};
+  const pick=f=>(v[f]==='points'&&o[f+'_pt'])?o[f+'_pt']:o[f];
+  const jobs=(o['職種提案']||[]).map((t,i)=>`${i+1}. ${t}`).join('\n');
+  const titles=(o['訴求文タイトル']||[]).map((t,i)=>`${i+1}. ${t}`).join('\n');
+  const txt=`【職種の提案】\n${jobs}\n\n【仕事内容】\n${pick('仕事内容')||''}\n\n【特記事項】\n${pick('特記事項')||''}\n\n【訴求文タイトル】\n${titles}\n\n【訴求文】\n${o['訴求文']||''}`;
+  copyText(txt);
+}
 
 // Init
 updateApiBanner();
