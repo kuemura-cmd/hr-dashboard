@@ -136,6 +136,10 @@
   .adopt-chk{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--ok); background:#e6f4ec; border:1px solid #bfe0cd; border-radius:20px; padding:3px 12px; cursor:pointer}
   .adopt-chk.off{color:var(--ink-soft); background:var(--chip); border-color:var(--line)}
   .adopt-chk input{margin:0}
+  details.re{border:1px dashed var(--gold); border-radius:8px; padding:0 12px; margin-top:6px; background:#fdf8f0}
+  details.re summary{cursor:pointer; padding:9px 0; font-size:12.5px; font-weight:700; color:var(--gold)}
+  details.re .reb{padding:0 0 12px}
+  .rebadge{display:inline-block; margin-left:8px; padding:2px 9px; background:var(--gold); color:#fff; border-radius:5px; font-size:11px; font-weight:700; vertical-align:middle}
   .variant .vh{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line-soft); background:#fafbfc}
   .variant .vh .tone{font-weight:700; color:var(--accent-deep)}
   .variant .vb{padding:14px; display:grid; grid-template-columns:1fr 1fr; gap:14px}
@@ -296,8 +300,9 @@
         <div class="row">
           <button class="btn" onclick="printDoc('cond')">送付条件シートを印刷 / PDF</button>
           <button class="btn sec" onclick="printDoc('scout')">スカウト文面を印刷 / PDF（求人別）</button>
+          <button class="btn sec" onclick="printDoc('re')">再スカウト文を印刷 / PDF（求人別）</button>
         </div>
-        <div class="hint" style="margin-top:8px">プレビューはA4用紙のイメージです。スカウト文面は求人ごとにページを分けて出力します（1求人＝3案）。</div>
+        <div class="hint" style="margin-top:8px">プレビューはA4用紙のイメージです。スカウト文面は採用案のみ、求人ごとにページを分けて出力します。再スカウト文には「再スカウト（2通目）」と明記されます。</div>
       </div>
     </div>
     <div class="panel">
@@ -307,6 +312,10 @@
     <div class="panel">
       <div class="panel-h"><h2>スカウト文面 プレビュー（A4／求人別）</h2></div>
       <div class="panel-b"><div class="preview-stage" id="prevScoutStage"></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>再スカウト文面 プレビュー（A4／求人別）</h2><span class="sub">2通目・約1か月後の再送用</span></div>
+      <div class="panel-b"><div class="preview-stage" id="prevReStage"></div></div>
     </div>
   </section>
 </main>
@@ -411,7 +420,7 @@ function newCondition(job){
     休日: pickHoliday(job._休日||""),
     補足: cleanSeg(job._勤務時間||""),
     points: POINT_POOL.slice(),
-    variants: TONES.map(t=>({tone:t.key, catch:t.catch, body:"", use:t.defPts.slice(), adopt:true, aiNote:""}))
+    variants: TONES.map(t=>({tone:t.key, catch:t.catch, body:"", reBody:"", use:t.defPts.slice(), adopt:true, aiNote:""}))
   };
 }
 
@@ -737,7 +746,7 @@ function renderScout(){
       <label class="fld">訴求ポイント（番号付きキーワード｜ドラッグで並べ替え・ダブルクリックで編集・×で削除）</label>
       <div class="pool" id="pointPool"></div>
       <div class="row" style="margin-top:10px"><input class="inp" id="newPoint" placeholder="キーワードを追加" style="flex:1"><button class="btn sec sm" onclick="addPoint(${i})">追加</button>
-      <span style="flex:1"></span><button class="btn ghost sm" onclick="genAll(${i})">3案まとめて生成（初回用）</button></div>
+      <span style="flex:1"></span><button class="btn ghost sm" onclick="genAll(${i})">3案まとめて生成（初回用）</button><button class="btn ghost sm" onclick="genReAll(${i})">再スカウト文の生成</button></div>
       <div class="hint" style="margin-top:8px">各案は番号を選び直して「この案を再生成」で<b>個別に</b>作り直せます。<b>「採用」</b>にした案だけがPDFに出力されます。</div>
     </div></div>
     ${c.variants.map((v,vi)=>variantCard(c,i,v,vi)).join("")}`;
@@ -793,9 +802,14 @@ function variantCard(c,i,v,vi){
         <div class="pill-multi">${c.points.map((p,pi)=>`<label class="${v.use.includes(pi)?'on':''}" title="${esc(p)}"><input type="checkbox" ${v.use.includes(pi)?'checked':''} onchange="toggleUse(${i},${vi},${pi},this.checked,this)">${pi+1}</label>`).join("")}</div></div>
       <div class="full"><label class="fld">AIへの指示（任意・「AIリライト」時に反映）</label>
         <input class="inp" placeholder="例：夜勤の魅力を強調／もっとカジュアルに／給与面を前面に" value="${esc(v.aiNote||'')}" oninput="setV(${i},${vi},'aiNote',this.value)"></div>
-      <div class="full"><label class="fld">本文</label>
+      <div class="full"><label class="fld">本文（初回）</label>
         <textarea class="inp" rows="14" oninput="setV(${i},${vi},'body',this.value); this.parentElement.querySelector('.counter').textContent=this.value.length+' 文字'">${esc(v.body)}</textarea>
         <div class="counter">${len} 文字</div></div>
+      <div class="full"><details class="re" ${v.reBody?'open':''}><summary>再スカウト文（2通目・約1か月後の再送用）</summary><div class="reb">
+        <div class="row" style="margin:4px 0 8px"><button class="btn ghost sm" onclick="genReVariant(${i},${vi})">この案の再スカウトを生成</button><span class="hint">「こんにちは／その後いかがですか／再度ご連絡」の型で生成します</span></div>
+        <textarea class="inp" rows="13" placeholder="「再スカウト文の生成」または上のボタンで作成されます" oninput="setV(${i},${vi},'reBody',this.value); this.parentElement.querySelector('.recounter').textContent=this.value.length+' 文字'">${esc(v.reBody||"")}</textarea>
+        <div class="counter recounter">${(v.reBody||"").length} 文字</div>
+      </div></details></div>
     </div></div>`;
 }
 function setV(i,vi,k,val){ state.conditions[i].variants[vi][k]=val; }
@@ -812,17 +826,24 @@ function facilityNoun(name,type){
   if(/介護|福祉|施設/.test(t)||/ホーム|ホスピタルメント|施設/.test(n)) return "私たちの施設";
   return "私たちの事業所";
 }
-function buildBody(c,vi){
+function buildBody(c,vi,mode){
   const job=state.jobs.find(j=>j.求人ID===c.jobId)||{};
   const v=c.variants[vi], tone=TONES[vi]||{lead:"",defPts:[]};
   const fac=job.施設名||"当施設", place=job.就業場所||"", noun=facilityNoun(fac,job.施設種別);
+  const re=(mode==='re');
   const use=(v.use&&v.use.length)?v.use:tone.defPts;
   const pts=use.map(pi=>c.points[pi]).filter(Boolean);
   const L=[];
   L.push(v.catch||tone.catch);
   L.push("");
-  L.push(`はじめまして！${place?place+" ":""}${fac}の採用担当です。`);
-  L.push(`プロフィールを拝見して、ぜひ${noun}でご活躍いただきたくご連絡させていただきました！`);
+  if(re){
+    L.push(`こんにちは。${fac}の採用担当です。`);
+    L.push("その後、転職活動のご状況はいかがでしょうか？");
+    L.push(`プロフィールをあらためて拝見し、ぜひ${noun}でご活躍いただきたく、再度ご連絡させていただきました。`);
+  }else{
+    L.push(`はじめまして！${place?place+" ":""}${fac}の採用担当です。`);
+    L.push(`プロフィールを拝見して、ぜひ${noun}でご活躍いただきたくご連絡させていただきました！`);
+  }
   L.push("");
   L.push((c.施設紹介&&c.施設紹介.trim())? c.施設紹介.trim() : tone.lead);
   L.push("");
@@ -837,13 +858,21 @@ function buildBody(c,vi){
   L.push(`・雇用形態：${c.雇用形態}`);
   if(c.補足&&c.補足.trim()) c.補足.trim().split(/\n+/).forEach(x=>x.trim()&&L.push("・"+x.trim()));
   L.push("");
-  L.push("少しでもこの募集に興味を持っていただけましたら、返信種別で「このスカウトに応募する」を選びご返信ください。");
-  L.push("ご不明点などがございましたらお気軽にお問い合わせください。");
-  L.push("お返事を心よりお待ちしております！");
+  if(re){
+    L.push("子育て中の方でも、ブランクのある方でも無理なく働ける環境です。");
+    L.push("「まずは話を聞いてみたい」という段階でも大歓迎です。");
+    L.push("ご興味がございましたら、お気軽にご返信ください。ご返信を心よりお待ちしております。");
+  }else{
+    L.push("少しでもこの募集に興味を持っていただけましたら、返信種別で「このスカウトに応募する」を選びご返信ください。");
+    L.push("ご不明点などがございましたらお気軽にお問い合わせください。");
+    L.push("お返事を心よりお待ちしております！");
+  }
   return L.join("\n");
 }
-function genVariant(i,vi){ state.conditions[i].variants[vi].body=buildBody(state.conditions[i],vi); renderScout(); toast(`案${vi+1}を生成しました`); }
-function genAll(i){ state.conditions[i].variants.forEach((v,vi)=>v.body=buildBody(state.conditions[i],vi)); renderScout(); toast("3案を生成しました"); }
+function genVariant(i,vi){ state.conditions[i].variants[vi].body=buildBody(state.conditions[i],vi,'first'); renderScout(); toast(`案${vi+1}を生成しました`); }
+function genAll(i){ state.conditions[i].variants.forEach((v,vi)=>v.body=buildBody(state.conditions[i],vi,'first')); renderScout(); toast("3案を生成しました"); }
+function genReVariant(i,vi){ state.conditions[i].variants[vi].reBody=buildBody(state.conditions[i],vi,'re'); renderScout(); toast(`案${vi+1}の再スカウト文を生成しました`); }
+function genReAll(i){ state.conditions[i].variants.forEach((v,vi)=>v.reBody=buildBody(state.conditions[i],vi,'re')); renderScout(); toast("再スカウト文（3案）を生成しました"); }
 
 /* ---- AI（任意） ---- */
 function aiVariant(i,vi){
@@ -890,6 +919,7 @@ table.cond .sect{ background:#0a4f4f; color:#fff; font-weight:700; font-size:9.5
 .job-block{ page-break-before:always; }
 .job-block:first-child{ page-break-before:avoid; }
 .job-h{ font-weight:700; font-size:11.5pt; border-bottom:1.5pt solid #0f6e6e; padding-bottom:5px; margin:0 0 8px; }
+.rebadge{ display:inline-block; margin-left:8px; padding:1.5pt 6pt; background:#a9701f; color:#fff; border-radius:4px; font-size:8.5pt; font-weight:700; vertical-align:middle; }
 .vid{ color:#0a4f4f; font-weight:700; margin:11px 0 3px; font-size:10pt; }
 pre.msg{ white-space:pre-wrap; font-family:inherit; font-size:10pt; line-height:1.78; background:#f7f9fb; border:.75pt solid #d8e0e6; border-radius:5px; padding:9pt 11pt; margin:0 0 7px; page-break-inside:avoid; }
 `;
@@ -916,28 +946,36 @@ function condInner(){
   });
   return html;
 }
-function scoutJobBlocks(){
+function scoutJobBlocks(mode){
+  const re=(mode==='re');
   return state.conditions.map(c=>{
     const j=state.jobs.find(x=>x.求人ID===c.jobId)||{};
     const av=adoptedVariants(c);
     const body = av.length
-      ? av.map(({v,vi})=>`<div class="vid">案${vi+1}・${esc(TONES[vi]?TONES[vi].key:v.tone)}</div><pre class="msg">${esc(v.body||"(未作成)")}</pre>`).join("")
+      ? av.map(({v,vi})=>{ const txt=re?(v.reBody||"(未作成)"):(v.body||"(未作成)");
+          return `<div class="vid">案${vi+1}・${esc(TONES[vi]?TONES[vi].key:v.tone)}${re?'（再スカウト）':''}</div><pre class="msg">${esc(txt)}</pre>`; }).join("")
       : `<pre class="msg">（採用された案がありません。スカウト文タブで「採用」を選択してください）</pre>`;
-    return `<div class="job-block"><div class="job-h">◆${esc(j.施設名||"")}　${esc(c.対象職種||j.職種||"")}（求人ID：${esc(c.jobId)}）</div>${body}</div>`;
+    const badge = re? `<span class="rebadge">再スカウト（2通目）</span>` : "";
+    return `<div class="job-block"><div class="job-h">◆${esc(j.施設名||"")}　${esc(c.対象職種||j.職種||"")}（求人ID：${esc(c.jobId)}）${badge}</div>${body}</div>`;
   });
 }
 function renderPreviews(){
-  const cs=document.getElementById('prevCondStage'), ss=document.getElementById('prevScoutStage');
+  const cs=document.getElementById('prevCondStage'), ss=document.getElementById('prevScoutStage'), rs=document.getElementById('prevReStage');
   if(!state.conditions.length){
     cs.innerHTML=`<div class="page">${emptyMsg("送付条件がありません")}</div>`;
-    ss.innerHTML=`<div class="page">${emptyMsg("スカウト文がありません")}</div>`; return;
+    ss.innerHTML=`<div class="page">${emptyMsg("スカウト文がありません")}</div>`;
+    if(rs) rs.innerHTML=`<div class="page">${emptyMsg("再スカウト文がありません")}</div>`; return;
   }
   cs.innerHTML=`<div class="page">${condInner()}</div>`;
-  ss.innerHTML=scoutJobBlocks().map(b=>`<div class="page">${b}</div>`).join("");
+  ss.innerHTML=scoutJobBlocks('first').map(b=>`<div class="page">${b}</div>`).join("");
+  if(rs) rs.innerHTML=scoutJobBlocks('re').map(b=>`<div class="page">${b}</div>`).join("");
 }
 function printDoc(kind){
   if(!state.conditions.length){ toast("先に送付条件・スカウト文を作成してください"); return; }
-  const inner = kind==='cond' ? condInner() : scoutJobBlocks().join("");
+  let inner;
+  if(kind==='cond') inner=condInner();
+  else if(kind==='re') inner=scoutJobBlocks('re').join("");
+  else inner=scoutJobBlocks('first').join("");
   printViaIframe(inner);
 }
 function printViaIframe(inner){
@@ -974,7 +1012,7 @@ function renderSaves(){
 }
 function loadSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return;
   state=JSON.parse(JSON.stringify(s.data));
-  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(!Array.isArray(v.use))v.use=[]; }); });
+  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",reBody:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(v.reBody==null)v.reBody=""; if(!Array.isArray(v.use))v.use=[]; }); });
   document.getElementById('acctName').value=state.account.name||"";
   closeModal('savesModal'); go('select'); toast("呼び出しました"); }
 function dupSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return; const saves=getSaves();
