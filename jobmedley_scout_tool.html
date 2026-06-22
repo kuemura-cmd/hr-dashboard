@@ -126,10 +126,16 @@
   .pool{display:flex; flex-wrap:wrap; gap:8px}
   .pool .chip{display:flex; align-items:center; gap:6px; background:var(--chip); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:12.5px; cursor:grab}
   .pool .chip.on{background:var(--accent-soft); border-color:var(--accent)}
+  .pool .chip .num{display:inline-flex; min-width:20px; height:20px; padding:0 4px; border-radius:6px; background:var(--accent); color:#fff; font-size:11px; font-weight:700; align-items:center; justify-content:center}
   .pool .chip .h{color:var(--ink-soft); cursor:grab}
   .pool .chip .x{color:var(--warn); cursor:pointer; font-weight:700}
   .pool .chip.drag{opacity:.4}
   .variant{border:1px solid var(--line); border-radius:var(--radius); margin-top:14px}
+  .variant.muted{opacity:.5}
+  .variant.muted .vh{background:#f3f4f6}
+  .adopt-chk{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--ok); background:#e6f4ec; border:1px solid #bfe0cd; border-radius:20px; padding:3px 12px; cursor:pointer}
+  .adopt-chk.off{color:var(--ink-soft); background:var(--chip); border-color:var(--line)}
+  .adopt-chk input{margin:0}
   .variant .vh{display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line-soft); background:#fafbfc}
   .variant .vh .tone{font-weight:700; color:var(--accent-deep)}
   .variant .vb{padding:14px; display:grid; grid-template-columns:1fr 1fr; gap:14px}
@@ -405,7 +411,7 @@ function newCondition(job){
     休日: pickHoliday(job._休日||""),
     補足: cleanSeg(job._勤務時間||""),
     points: POINT_POOL.slice(),
-    variants: TONES.map(t=>({tone:t.key, catch:t.catch, body:"", use:t.defPts.slice()}))
+    variants: TONES.map(t=>({tone:t.key, catch:t.catch, body:"", use:t.defPts.slice(), adopt:true, aiNote:""}))
   };
 }
 
@@ -728,10 +734,11 @@ function renderScout(){
       </div>
     </div></div>
     <div class="panel" style="box-shadow:none; border-color:var(--line-soft)"><div class="panel-b">
-      <label class="fld">訴求ポイント（クリックで各案へ挿入対象に・ドラッグで並べ替え・×で削除）</label>
+      <label class="fld">訴求ポイント（番号付きキーワード｜ドラッグで並べ替え・ダブルクリックで編集・×で削除）</label>
       <div class="pool" id="pointPool"></div>
-      <div class="row" style="margin-top:10px"><input class="inp" id="newPoint" placeholder="ポイントを追加" style="flex:1"><button class="btn sec sm" onclick="addPoint(${i})">追加</button>
-      <span style="flex:1"></span><button class="btn sm" onclick="genAll(${i})">3案を一括生成</button></div>
+      <div class="row" style="margin-top:10px"><input class="inp" id="newPoint" placeholder="キーワードを追加" style="flex:1"><button class="btn sec sm" onclick="addPoint(${i})">追加</button>
+      <span style="flex:1"></span><button class="btn ghost sm" onclick="genAll(${i})">3案まとめて生成（初回用）</button></div>
+      <div class="hint" style="margin-top:8px">各案は番号を選び直して「この案を再生成」で<b>個別に</b>作り直せます。<b>「採用」</b>にした案だけがPDFに出力されます。</div>
     </div></div>
     ${c.variants.map((v,vi)=>variantCard(c,i,v,vi)).join("")}`;
   renderPool(i);
@@ -739,7 +746,7 @@ function renderScout(){
 function renderPool(i){
   const c=state.conditions[i], pool=document.getElementById('pointPool');
   pool.innerHTML=c.points.map((p,pi)=>`<div class="chip" draggable="true" data-pi="${pi}">
-    <span class="h">⋮⋮</span><span ondblclick="editPoint(${i},${pi})">${esc(p)}</span><span class="x" onclick="delPoint(${i},${pi})">×</span></div>`).join("")
+    <span class="num">${pi+1}</span><span class="h">⋮⋮</span><span class="ptxt" ondblclick="editPoint(${i},${pi})">${esc(p)}</span><span class="x" onclick="delPoint(${i},${pi})">×</span></div>`).join("")
     || '<span class="hint">ポイントがありません</span>';
   enableDnd(pool,i);
 }
@@ -749,43 +756,56 @@ function enableDnd(pool,i){
     ch.addEventListener('dragstart',()=>{dragEl=ch; ch.classList.add('drag');});
     ch.addEventListener('dragend',()=>{ch.classList.remove('drag'); commitOrder(pool,i);});
     ch.addEventListener('dragover',e=>{e.preventDefault();
-      const a=+dragEl.dataset.pi, after=e.clientY>ch.getBoundingClientRect().top+ch.offsetHeight/2;
+      const after=e.clientY>ch.getBoundingClientRect().top+ch.offsetHeight/2;
       if(ch!==dragEl){ ch.parentNode.insertBefore(dragEl, after?ch.nextSibling:ch); }
     });
   });
 }
 function commitOrder(pool,i){
-  const order=[...pool.querySelectorAll('.chip')].map(ch=>+ch.dataset.pi);
-  state.conditions[i].points = order.map(o=>state.conditions[i].points[o]);
-  renderPool(i);
+  const c=state.conditions[i];
+  const order=[...pool.querySelectorAll('.chip')].map(ch=>+ch.dataset.pi); // old indices in new order
+  c.points = order.map(o=>c.points[o]);
+  const remap={}; order.forEach((oldIdx,newIdx)=>remap[oldIdx]=newIdx);
+  c.variants.forEach(v=>{ v.use = v.use.map(x=>remap[x]).filter(x=>x!=null).sort((a,b)=>a-b); });
+  renderScout();
 }
-function addPoint(i){ const v=document.getElementById('newPoint').value.trim(); if(!v)return; state.conditions[i].points.push(v); document.getElementById('newPoint').value=""; renderPool(i); }
-function delPoint(i,pi){ state.conditions[i].points.splice(pi,1); renderScout(); }
+function addPoint(i){ const v=document.getElementById('newPoint').value.trim(); if(!v)return; state.conditions[i].points.push(v); document.getElementById('newPoint').value=""; renderScout(); }
+function delPoint(i,pi){
+  const c=state.conditions[i];
+  c.points.splice(pi,1);
+  c.variants.forEach(v=>{ v.use = v.use.filter(x=>x!==pi).map(x=>x>pi?x-1:x); });
+  renderScout();
+}
 function editPoint(i,pi){ const v=prompt("ポイントを編集",state.conditions[i].points[pi]); if(v!=null){state.conditions[i].points[pi]=v; renderScout();} }
 
 function variantCard(c,i,v,vi){
-  const job=state.jobs.find(j=>j.求人ID===c.jobId)||{};
-  const len=v.body.length;
-  return `<div class="variant"><div class="vh">
+  const len=(v.body||"").length, muted=v.adopt?"":"muted";
+  return `<div class="variant ${muted}"><div class="vh">
       <span class="tone">案${vi+1}・${esc(TONES[vi]?TONES[vi].key:v.tone)}</span>
+      <label class="adopt-chk ${v.adopt?'':'off'}"><input type="checkbox" ${v.adopt?'checked':''} onchange="toggleAdopt(${i},${vi},this.checked)">${v.adopt?'採用':'不採用'}</label>
       <div style="margin-left:auto" class="no-print">
-        <button class="btn ghost sm" onclick="genVariant(${i},${vi})">選択ポイントで定型生成</button>
-        <button class="btn sec sm" onclick="aiVariant(${i},${vi})">AIで生成/リライト</button>
+        <button class="btn sm" onclick="genVariant(${i},${vi})">この案を再生成</button>
+        <button class="btn sec sm" onclick="aiVariant(${i},${vi})">AIリライト</button>
       </div></div>
     <div class="vb">
       <div class="full"><label class="fld">キャッチコピー</label><input class="inp" value="${esc(v.catch)}" oninput="setV(${i},${vi},'catch',this.value)"></div>
-      <div class="full"><label class="fld">挿入する訴求ポイント（番号で指定）</label>
-        <div class="pill-multi">${c.points.map((p,pi)=>`<label class="${v.use.includes(pi)?'on':''}"><input type="checkbox" ${v.use.includes(pi)?'checked':''} onchange="toggleUse(${i},${vi},${pi},this.checked)">${pi+1}</label>`).join("")}</div></div>
+      <div class="full"><label class="fld">挿入する訴求ポイント（番号で選択 → 「この案を再生成」）</label>
+        <div class="pill-multi">${c.points.map((p,pi)=>`<label class="${v.use.includes(pi)?'on':''}" title="${esc(p)}"><input type="checkbox" ${v.use.includes(pi)?'checked':''} onchange="toggleUse(${i},${vi},${pi},this.checked,this)">${pi+1}</label>`).join("")}</div></div>
+      <div class="full"><label class="fld">AIへの指示（任意・「AIリライト」時に反映）</label>
+        <input class="inp" placeholder="例：夜勤の魅力を強調／もっとカジュアルに／給与面を前面に" value="${esc(v.aiNote||'')}" oninput="setV(${i},${vi},'aiNote',this.value)"></div>
       <div class="full"><label class="fld">本文</label>
-        <textarea class="inp" rows="14" oninput="setV(${i},${vi},'body',this.value); this.nextElementSibling.textContent=this.value.length+' 文字'">${esc(v.body)}</textarea>
+        <textarea class="inp" rows="14" oninput="setV(${i},${vi},'body',this.value); this.parentElement.querySelector('.counter').textContent=this.value.length+' 文字'">${esc(v.body)}</textarea>
         <div class="counter">${len} 文字</div></div>
     </div></div>`;
 }
 function setV(i,vi,k,val){ state.conditions[i].variants[vi][k]=val; }
-function toggleUse(i,vi,pi,on){
+function toggleUse(i,vi,pi,on,el){
   const u=state.conditions[i].variants[vi].use;
   if(on){ if(!u.includes(pi))u.push(pi); } else state.conditions[i].variants[vi].use=u.filter(x=>x!==pi);
+  if(el){ const lab=el.closest('label'); if(lab)lab.classList.toggle('on',on); }
 }
+function toggleAdopt(i,vi,on){ state.conditions[i].variants[vi].adopt=on; renderScout(); }
+function adoptedVariants(c){ return c.variants.map((v,vi)=>({v,vi})).filter(o=>o.v.adopt); }
 function facilityNoun(name,type){
   const t=type||"", n=name||"";
   if(/病院|診療所|クリニック|医院/.test(t)||/病院|診療所|クリニック|医院/.test(n)) return "当院";
@@ -831,6 +851,7 @@ function aiVariant(i,vi){
   if(!cfg.key){ toast("設定でAPIキーを入力してください"); openSettings(); return; }
   const c=state.conditions[i], v=c.variants[vi], job=state.jobs.find(j=>j.求人ID===c.jobId)||{};
   const pts=v.use.map(pi=>c.points[pi]).filter(Boolean);
+  const note=(v.aiNote||"").trim();
   const base=v.body || buildBody(c,vi);
   const prompt=`あなたは医療・介護の採用担当です。ジョブメドレーのスカウトメッセージを日本語で作成してください。
 施設名：${job.施設名||""} ／ 勤務地：${job.就業場所||""} ／ 職種：${c.対象職種} ／ 給与：${job.給与||""} ／ 休日：${c.休日||""} ／ 資格：${c.保有資格||"不問"}
@@ -838,7 +859,7 @@ function aiVariant(i,vi){
 募集補足：${c.補足||"（なし）"}
 トーン：${TONES[vi]?TONES[vi].key:v.tone}
 キャッチコピー：${v.catch}
-必ず盛り込む魅力：${pts.join(" / ")||"（特になし）"}
+必ず盛り込む魅力：${pts.join(" / ")||"（特になし）"}${note?`\n★担当者からの指示（最優先で反映）：${note}`:""}
 構成：キャッチ→「はじめまして！〔勤務地〕〔施設名〕の採用担当です」→「ぜひ〔当院/私たちの施設/私たちの事業所〕でご活躍…」→施設紹介→【施設名の魅力】の箇条書き→【募集内容】(職種・給与・休日・資格・雇用形態)→結び（「このスカウトに応募する」で返信を促す）。
 注意：性別・年齢の限定表現は本文に書かない。400〜600字程度。本文のみ出力。
 参考の下書き：
@@ -890,7 +911,7 @@ function condInner(){
       ${cr("対象職種",c.対象職種)}${cr("対象求人",c.対象求人)}${cr("雇用形態",c.雇用形態)}
       ${cr("保有資格",c.保有資格)}${cr("経験年数",c.経験年数)}${cr("エリア",c.エリア)}
       ${cr("年齢",c.年齢.join("、"))}${cr("性別",c.性別)}${cr("最終ログイン",c.最終ログイン)}
-      ${cr("スカウト文面",c.variants.map((v,vi)=>`【案${vi+1}・${TONES[vi]?TONES[vi].key:""}】${v.catch||""}`).join("\n")+"\n※全文は別紙「スカウト文面（求人別）」をご参照ください")}
+      ${cr("スカウト文面",(adoptedVariants(c).length?adoptedVariants(c):c.variants.map((v,vi)=>({v,vi}))).map(({v,vi})=>`【案${vi+1}・${TONES[vi]?TONES[vi].key:""}】${v.catch||""}`).join("\n")+"\n※全文は別紙「スカウト文面（求人別）」をご参照ください")}
     </table>`;
   });
   return html;
@@ -898,8 +919,11 @@ function condInner(){
 function scoutJobBlocks(){
   return state.conditions.map(c=>{
     const j=state.jobs.find(x=>x.求人ID===c.jobId)||{};
-    return `<div class="job-block"><div class="job-h">◆${esc(j.施設名||"")}　${esc(c.対象職種||j.職種||"")}（求人ID：${esc(c.jobId)}）</div>
-      ${c.variants.map((v,vi)=>`<div class="vid">案${vi+1}・${esc(TONES[vi]?TONES[vi].key:v.tone)}</div><pre class="msg">${esc(v.body||"(未作成)")}</pre>`).join("")}</div>`;
+    const av=adoptedVariants(c);
+    const body = av.length
+      ? av.map(({v,vi})=>`<div class="vid">案${vi+1}・${esc(TONES[vi]?TONES[vi].key:v.tone)}</div><pre class="msg">${esc(v.body||"(未作成)")}</pre>`).join("")
+      : `<pre class="msg">（採用された案がありません。スカウト文タブで「採用」を選択してください）</pre>`;
+    return `<div class="job-block"><div class="job-h">◆${esc(j.施設名||"")}　${esc(c.対象職種||j.職種||"")}（求人ID：${esc(c.jobId)}）</div>${body}</div>`;
   });
 }
 function renderPreviews(){
@@ -950,7 +974,7 @@ function renderSaves(){
 }
 function loadSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return;
   state=JSON.parse(JSON.stringify(s.data));
-  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",use:t.defPts.slice()})); });
+  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(!Array.isArray(v.use))v.use=[]; }); });
   document.getElementById('acctName').value=state.account.name||"";
   closeModal('savesModal'); go('select'); toast("呼び出しました"); }
 function dupSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return; const saves=getSaves();
