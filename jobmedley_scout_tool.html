@@ -157,6 +157,7 @@
   .page table.cond th,.page table.cond td{border:.75pt solid #9aa7b1; padding:4.5pt 6pt; vertical-align:top; text-align:left}
   .page table.cond th.lab{background:#eef3f5; width:96px; font-weight:700; white-space:nowrap}
   .page table.cond .sect{background:var(--accent-deep); color:#fff; font-weight:700; font-size:9.5pt}
+  .page .em-red{color:#c0392b; font-weight:700}
   .page .job-h{font-weight:700; font-size:11.5pt; border-bottom:1.5pt solid var(--accent); padding-bottom:5px; margin:0 0 8px; color:#16202a}
   .page .vid{color:var(--accent-deep); font-weight:700; margin:11px 0 3px; font-size:10pt}
   .page pre.msg{white-space:pre-wrap; font-family:inherit; font-size:10pt; line-height:1.78; background:#f7f9fb; border:.75pt solid #d8e0e6; border-radius:5px; padding:9pt 11pt; margin:0 0 7px}
@@ -327,9 +328,10 @@
   <div class="modal">
     <div class="modal-h"><h3>保存データ</h3><span class="x" onclick="closeModal('savesModal')">×</span></div>
     <div class="modal-b">
-      <div class="row" style="margin-bottom:14px">
-        <input class="inp" id="saveName" placeholder="保存名（未入力なら法人名＋日付）" style="flex:1">
-        <button class="btn" onclick="saveSnapshot()">現在の内容を保存</button>
+      <div style="margin-bottom:14px">
+        <input class="inp" id="saveName" placeholder="保存名（未入力なら法人名＋日付）" style="width:100%; margin-bottom:8px">
+        <div class="row" id="saveBtns"></div>
+        <div class="hint" id="saveStatus" style="margin-top:6px"></div>
       </div>
       <div class="row no-print" style="margin-bottom:10px">
         <button class="btn ghost sm" onclick="exportJson()">JSON書き出し</button>
@@ -414,7 +416,7 @@ function newCondition(job){
     jobId: job.求人ID, 法人名: job.法人名||"", 施設種別: job.施設種別||"",
     対象職種: job.職種||"", 対象求人:`${job.施設名||""}  ・求人ID：${job.求人ID||""}`,
     雇用形態: job.雇用形態||"正職員", 保有資格: job.保有資格||"",
-    経験年数:"不問", エリア:"", 年齢:[], 性別:"不問", 最終ログイン:LOGIN_DEFAULT,
+    経験年数:"不問", エリア:"", 年齢:[], 年齢自由:"", 性別:"不問", 最終ログイン:LOGIN_DEFAULT,
     送付数:0,
     施設紹介: cleanPara(job._PR||job._紹介||""),
     休日: pickHoliday(job._休日||""),
@@ -547,7 +549,7 @@ function extractQual(s){
 
 /* ---------------- デモデータ ---------------- */
 function loadDemo(){
-  state=blankState();
+  state=blankState(); currentSaveId=null;
   state.account={name:"株式会社桜十字",cap:200,memo:""};
   state.jobs=[
     {求人ID:"1511901",施設名:"ホスピタルメント桜十字",職種:"介護職/ヘルパー",雇用形態:"正職員",保有資格:"介護職員初任者研修、実務者研修、旧ヘルパー1・2級、介護福祉士",給与:"199,500円～",就業場所:"熊本県熊本市南区",掲載ステータス:"掲載中"},
@@ -674,7 +676,8 @@ function splitEven(){
 function renderConditions(){
   const wrap=document.getElementById('condWrap');
   if(!state.conditions.length){ wrap.innerHTML=emptyMsg("先に「求人選択」で対象を選んでください"); return; }
-  wrap.innerHTML = state.conditions.map((c,i)=>condCard(c,i)).join("");
+  wrap.innerHTML = `<div class="callout no-print" style="margin-bottom:14px">強調したい部分を <b>**アスタリスク2つ**</b> で囲むと、送付条件シート（PDF）でその部分が<span style="color:#c0392b;font-weight:700">赤字</span>になります。例：最終ログイン欄に「**必ず最新ログイン順で送付**」。※赤字になるのは送付条件シートのみです。</div>`
+    + state.conditions.map((c,i)=>condCard(c,i)).join("");
 }
 function condCard(c,i){
   const ageOn=v=>c.年齢.includes(v)?'on':'';
@@ -692,8 +695,9 @@ function condCard(c,i){
         <select class="inp" onchange="setC(${i},'性別',this.value)">${SEX_OPTS.map(o=>`<option ${c.性別===o?'selected':''}>${o}</option>`).join("")}</select>
         ${c.性別!=='不問'?'<div class="hint" style="color:var(--warn)">※性別の限定は表現に注意（不問を推奨）</div>':''}</div>
 
-      <div class="full"><label class="fld">年齢 <span class="edit-tag">編集</span>（複数選択可）</label>
-        <div class="pill-multi" id="age${i}">${AGE_OPTS.map(o=>`<label class="${ageOn(o)}"><input type="checkbox" ${c.年齢.includes(o)?'checked':''} onchange="toggleAge(${i},'${o}',this.checked)">${o}</label>`).join("")}</div></div>
+      <div class="full"><label class="fld">年齢 <span class="edit-tag">編集</span>（複数選択可／自由入力も可）</label>
+        <div class="pill-multi" id="age${i}">${AGE_OPTS.map(o=>`<label class="${ageOn(o)}"><input type="checkbox" ${c.年齢.includes(o)?'checked':''} onchange="toggleAge(${i},'${o}',this.checked)">${o}</label>`).join("")}</div>
+        <input class="inp" style="margin-top:6px" placeholder="自由入力（例：～52歳まで）" value="${esc(c.年齢自由||'')}" oninput="setC(${i},'年齢自由',this.value)"></div>
 
       <div class="full"><label class="fld">エリア <span class="edit-tag">編集</span></label>
         <details class="area"><summary>通勤可能エリアを提案（プリセット挿入）</summary><div class="ab">
@@ -916,6 +920,7 @@ table.cond tr{ page-break-inside:avoid; }
 table.cond th,table.cond td{ border:.75pt solid #9aa7b1; padding:4.5pt 6pt; vertical-align:top; text-align:left; }
 table.cond th.lab{ background:#eef3f5; width:96px; font-weight:700; white-space:nowrap; }
 table.cond .sect{ background:#0a4f4f; color:#fff; font-weight:700; font-size:9.5pt; }
+.em-red{ color:#c0392b; font-weight:700; }
 .job-block{ page-break-before:always; }
 .job-block:first-child{ page-break-before:avoid; }
 .job-h{ font-weight:700; font-size:11.5pt; border-bottom:1.5pt solid #0f6e6e; padding-bottom:5px; margin:0 0 8px; }
@@ -927,20 +932,22 @@ function allocBreakdown(){
   return state.conditions.filter(c=>c.送付数>0).map(c=>{
     const j=state.jobs.find(x=>x.求人ID===c.jobId)||{};
     return `・求人ID：${c.jobId}　${c.対象職種||j.職種||""}　${c.送付数}通`;
-  }).join("　");
+  }).join("\n");
 }
-function cr(l,v){ return `<tr><th class="lab">${l}</th><td>${esc(v||"").replace(/\n/g,"<br>")}</td></tr>`; }
+function fmtCell(v){ return esc(v||"").replace(/\*\*(.+?)\*\*/g,'<span class="em-red">$1</span>').replace(/\n/g,"<br>"); }
+function cr(l,v){ return `<tr><th class="lab">${l}</th><td>${fmtCell(v)}</td></tr>`; }
+function ageText(c){ return [c.年齢.join("、"),(c.年齢自由||"").trim()].filter(Boolean).join("、"); }
 function condInner(){
   const a=state.account, total=allocTotal();
   let html=`<h2 class="dt">◆ジョブメドレースカウト送信条件</h2>
-    <table class="cond"><tr><th class="lab">法人名</th><td>${esc(a.name||"")}</td></tr>
-    <tr><th class="lab">送付数</th><td>${total}通/月${a.memo?'　'+esc(a.memo):''}<br>${esc(allocBreakdown())}</td></tr></table>`;
+    <table class="cond"><tr><th class="lab">法人名</th><td>${fmtCell(a.name||"")}</td></tr>
+    <tr><th class="lab">送付数</th><td>${fmtCell(`${total}通/月${a.memo?'　'+a.memo:''}\n${allocBreakdown()}`)}</td></tr></table>`;
   state.conditions.forEach(c=>{
     html+=`<table class="cond">
       <tr><td class="sect" colspan="2">送付条件</td></tr>
       ${cr("対象職種",c.対象職種)}${cr("対象求人",c.対象求人)}${cr("雇用形態",c.雇用形態)}
       ${cr("保有資格",c.保有資格)}${cr("経験年数",c.経験年数)}${cr("エリア",c.エリア)}
-      ${cr("年齢",c.年齢.join("、"))}${cr("性別",c.性別)}${cr("最終ログイン",c.最終ログイン)}
+      ${cr("年齢",ageText(c))}${cr("性別",c.性別)}${cr("最終ログイン",c.最終ログイン)}
       ${cr("スカウト文面",(adoptedVariants(c).length?adoptedVariants(c):c.variants.map((v,vi)=>({v,vi}))).map(({v,vi})=>`【案${vi+1}・${TONES[vi]?TONES[vi].key:""}】${v.catch||""}`).join("\n")+"\n※全文は別紙「スカウト文面（求人別）」をご参照ください")}
     </table>`;
   });
@@ -992,32 +999,65 @@ function printViaIframe(inner){
 
 /* ---------------- 保存・呼び出し ---------------- */
 const LS_KEY="jm_scout_saves_v1", SET_KEY="jm_scout_settings_v1";
-function openSaves(){ renderSaves(); openModal('savesModal'); }
+let currentSaveId=null;
+function openSaves(){ renderSaves(); refreshSaveButtons(); openModal('savesModal'); }
 function getSaves(){ try{return JSON.parse(localStorage.getItem(LS_KEY)||"[]");}catch(e){return[];} }
 function setSaves(a){ localStorage.setItem(LS_KEY,JSON.stringify(a)); }
-function saveSnapshot(){
-  const nm=document.getElementById('saveName').value.trim() || `${state.account.name||"無題"}_${ymd()}`;
+function refreshSaveButtons(){
+  const cur=getSaves().find(s=>s.id===currentSaveId);
+  const btns=document.getElementById('saveBtns'), st=document.getElementById('saveStatus');
+  if(!btns||!st) return;
+  if(cur){
+    btns.innerHTML=`<button class="btn" onclick="saveSnapshot('over')">上書き保存</button><button class="btn sec" onclick="saveSnapshot('new')">新規保存</button>`;
+    st.innerHTML=`現在は保存データ「<b>${esc(cur.name)}</b>」を編集中です。「上書き保存」でこの保存を更新、「新規保存」で別データとして追加します。`;
+  }else{
+    btns.innerHTML=`<button class="btn" onclick="saveSnapshot('new')">保存</button>`;
+    st.textContent="保存すると新しいデータとして登録されます（以前の保存データは消えません）。";
+  }
+}
+function saveSnapshot(mode){
   const saves=getSaves();
-  saves.unshift({id:Date.now(),name:nm,date:new Date().toLocaleString('ja-JP'),data:JSON.parse(JSON.stringify(state))});
-  setSaves(saves); document.getElementById('saveName').value=""; renderSaves(); toast("保存しました");
+  const nmField=document.getElementById('saveName').value.trim();
+  if(mode==='over' && currentSaveId!=null){
+    const idx=saves.findIndex(s=>s.id===currentSaveId);
+    if(idx>=0){
+      if(nmField) saves[idx].name=nmField;
+      saves[idx].date=new Date().toLocaleString('ja-JP');
+      saves[idx].data=JSON.parse(JSON.stringify(state));
+      setSaves(saves); document.getElementById('saveName').value=""; renderSaves(); refreshSaveButtons(); toast("上書き保存しました"); return;
+    }
+  }
+  const nm=nmField || `${state.account.name||"無題"}_${ymd()}`;
+  const id=Date.now();
+  saves.unshift({id,name:nm,date:new Date().toLocaleString('ja-JP'),data:JSON.parse(JSON.stringify(state))});
+  currentSaveId=id;
+  setSaves(saves); document.getElementById('saveName').value=""; renderSaves(); refreshSaveButtons(); toast("新規保存しました");
+}
+function overwriteSnap(id){
+  const saves=getSaves(), idx=saves.findIndex(s=>s.id===id); if(idx<0)return;
+  if(!confirm(`保存データ「${saves[idx].name}」を、現在の内容で上書きしますか？`))return;
+  saves[idx].data=JSON.parse(JSON.stringify(state)); saves[idx].date=new Date().toLocaleString('ja-JP');
+  currentSaveId=id; setSaves(saves); renderSaves(); refreshSaveButtons(); toast("上書き保存しました");
 }
 function renderSaves(){
   const saves=getSaves(), el=document.getElementById('savesList');
   el.innerHTML = saves.length? saves.map(s=>`<div class="save-item">
-    <div><div class="nm">${esc(s.name)}</div><div class="dt">${esc(s.date)}</div></div><div class="sp"></div>
+    <div><div class="nm">${esc(s.name)}${s.id===currentSaveId?' <span class="auto-tag">編集中</span>':''}</div><div class="dt">${esc(s.date)}</div></div><div class="sp"></div>
     <button class="btn sec sm" onclick="loadSnap(${s.id})">呼び出し</button>
+    <button class="btn ghost sm" onclick="overwriteSnap(${s.id})">上書き</button>
     <button class="btn ghost sm" onclick="dupSnap(${s.id})">複製</button>
     <button class="btn warn sm" onclick="delSnap(${s.id})">削除</button></div>`).join("")
     : '<div class="empty">保存データはまだありません</div>';
 }
 function loadSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return;
   state=JSON.parse(JSON.stringify(s.data));
-  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",reBody:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(v.reBody==null)v.reBody=""; if(!Array.isArray(v.use))v.use=[]; }); });
+  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(c.年齢自由==null)c.年齢自由=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",reBody:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(v.reBody==null)v.reBody=""; if(!Array.isArray(v.use))v.use=[]; }); });
+  currentSaveId=id;
   document.getElementById('acctName').value=state.account.name||"";
   closeModal('savesModal'); go('select'); toast("呼び出しました"); }
 function dupSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return; const saves=getSaves();
   saves.unshift({id:Date.now(),name:s.name+"（複製）",date:new Date().toLocaleString('ja-JP'),data:s.data}); setSaves(saves); renderSaves(); }
-function delSnap(id){ if(!confirm("この保存データを削除しますか？"))return; setSaves(getSaves().filter(x=>x.id!==id)); renderSaves(); }
+function delSnap(id){ if(!confirm("この保存データを削除しますか？"))return; setSaves(getSaves().filter(x=>x.id!==id)); if(id===currentSaveId)currentSaveId=null; renderSaves(); refreshSaveButtons(); }
 function exportJson(){
   const blob=new Blob([JSON.stringify(getSaves(),null,2)],{type:"application/json"});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`jobmedley_scout_${ymd()}.json`; a.click();
