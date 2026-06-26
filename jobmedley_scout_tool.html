@@ -414,9 +414,9 @@ function blankState(){
 function newCondition(job){
   return {
     jobId: job.求人ID, 法人名: job.法人名||"", 施設種別: job.施設種別||"",
-    対象職種: job.職種||"", 対象求人:`${job.施設名||""}  ・求人ID：${job.求人ID||""}`,
+    対象職種: job.職種||"", 経験職種: job.職種||"", 対象求人:`${job.施設名||""}  ・求人ID：${job.求人ID||""}`,
     雇用形態: job.雇用形態||"正職員", 保有資格: job.保有資格||"",
-    経験年数:"不問", エリア:"", 年齢:[], 年齢自由:"", 性別:"不問", 最終ログイン:LOGIN_DEFAULT,
+    経験年数:"不問", エリア:"", 年齢:[], 年齢自由:"", 性別:"不問", 最終ログイン:LOGIN_DEFAULT, 備考:"",
     送付数:0,
     施設紹介: cleanPara(job._PR||job._紹介||""),
     休日: pickHoliday(job._休日||""),
@@ -682,10 +682,14 @@ function renderConditions(){
 function condCard(c,i){
   const ageOn=v=>c.年齢.includes(v)?'on':'';
   return `<div class="cond-card">
-    <div class="ch"><span class="idx">${i+1}</span><span class="ttl">${esc(condTitle(c))}</span><span class="meta">／ 送付 ${c.送付数} 通</span></div>
+    <div class="ch"><span class="idx">${i+1}</span><span class="ttl">${esc(condTitle(c))}</span>
+      <span class="meta">／ 送付数</span><input type="number" min="0" inputmode="numeric" class="inp" style="width:78px; padding:4px 8px" value="${c.送付数}" oninput="setCondSend(${i},this.value)"><span class="meta">通</span>
+      <span style="flex:1"></span>
+      <button class="btn ghost sm no-print" onclick="dupCondition(${i})">この条件を複製</button></div>
     <div class="cb"><div class="fgrid">
-      <div><label class="fld">対象職種 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.対象職種)}" oninput="setC(${i},'対象職種',this.value)"></div>
-      <div><label class="fld">雇用形態 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.雇用形態)}" oninput="setC(${i},'雇用形態',this.value)"></div>
+      <div><label class="fld">希望職種 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.対象職種)}" oninput="setC(${i},'対象職種',this.value)"></div>
+      <div><label class="fld">経験職種 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.経験職種||'')}" oninput="setC(${i},'経験職種',this.value)"></div>
+      <div class="full"><label class="fld">雇用形態 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.雇用形態)}" oninput="setC(${i},'雇用形態',this.value)"></div>
       <div class="full"><label class="fld">対象求人 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.対象求人)}" oninput="setC(${i},'対象求人',this.value)"></div>
       <div class="full"><label class="fld">保有資格 <span class="auto-tag">自動</span></label><input class="inp" value="${esc(c.保有資格)}" oninput="setC(${i},'保有資格',this.value)"></div>
 
@@ -708,9 +712,20 @@ function condCard(c,i){
 
       <div class="full"><label class="fld">最終ログイン <span class="edit-tag">編集</span></label>
         <textarea class="inp" rows="3" oninput="setC(${i},'最終ログイン',this.value)">${esc(c.最終ログイン)}</textarea></div>
+
+      <div class="full"><label class="fld">備考 <span class="edit-tag">編集</span></label>
+        <textarea class="inp" rows="2" placeholder="補足・申し送りなど（送付条件シートに表示。**で囲むと赤字）" oninput="setC(${i},'備考',this.value)">${esc(c.備考||'')}</textarea></div>
     </div></div></div>`;
 }
 function setC(i,k,v){ state.conditions[i][k]=v; }
+function setCondSend(i,v){ state.conditions[i].送付数=Math.max(0,Math.floor(+v||0)); }
+function dupCondition(i){
+  const copy=JSON.parse(JSON.stringify(state.conditions[i]));
+  copy.対象求人=(copy.対象求人||"")+"（複製）";
+  state.conditions.splice(i+1,0,copy);
+  renderConditions();
+  toast("送付条件を複製しました");
+}
 function toggleAge(i,v,on){
   const a=state.conditions[i].年齢;
   if(on){ if(!a.includes(v))a.push(v); } else state.conditions[i].年齢=a.filter(x=>x!==v);
@@ -945,9 +960,9 @@ function condInner(){
   state.conditions.forEach(c=>{
     html+=`<table class="cond">
       <tr><td class="sect" colspan="2">送付条件</td></tr>
-      ${cr("対象職種",c.対象職種)}${cr("対象求人",c.対象求人)}${cr("雇用形態",c.雇用形態)}
+      ${cr("希望職種",c.対象職種)}${cr("経験職種",c.経験職種)}${cr("対象求人",c.対象求人)}${cr("雇用形態",c.雇用形態)}
       ${cr("保有資格",c.保有資格)}${cr("経験年数",c.経験年数)}${cr("エリア",c.エリア)}
-      ${cr("年齢",ageText(c))}${cr("性別",c.性別)}${cr("最終ログイン",c.最終ログイン)}
+      ${cr("年齢",ageText(c))}${cr("性別",c.性別)}${cr("最終ログイン",c.最終ログイン)}${(c.備考&&c.備考.trim())?cr("備考",c.備考):""}
       ${cr("スカウト文面",(adoptedVariants(c).length?adoptedVariants(c):c.variants.map((v,vi)=>({v,vi}))).map(({v,vi})=>`【案${vi+1}・${TONES[vi]?TONES[vi].key:""}】${v.catch||""}`).join("\n")+"\n※全文は別紙「スカウト文面（求人別）」をご参照ください")}
     </table>`;
   });
@@ -1051,7 +1066,7 @@ function renderSaves(){
 }
 function loadSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return;
   state=JSON.parse(JSON.stringify(s.data));
-  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(c.年齢自由==null)c.年齢自由=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",reBody:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(v.reBody==null)v.reBody=""; if(!Array.isArray(v.use))v.use=[]; }); });
+  state.conditions.forEach(c=>{ if(!c.points)c.points=POINT_POOL.slice(); if(c.施設紹介==null)c.施設紹介=""; if(c.休日==null)c.休日=""; if(c.補足==null)c.補足=""; if(c.年齢自由==null)c.年齢自由=""; if(c.経験職種==null)c.経験職種=c.対象職種||""; if(c.備考==null)c.備考=""; if(!c.variants)c.variants=TONES.map(t=>({tone:t.key,catch:t.catch,body:"",reBody:"",use:t.defPts.slice(),adopt:true,aiNote:""})); c.variants.forEach(v=>{ if(v.adopt==null)v.adopt=true; if(v.aiNote==null)v.aiNote=""; if(v.reBody==null)v.reBody=""; if(!Array.isArray(v.use))v.use=[]; }); });
   currentSaveId=id;
   document.getElementById('acctName').value=state.account.name||"";
   closeModal('savesModal'); go('select'); toast("呼び出しました"); }
