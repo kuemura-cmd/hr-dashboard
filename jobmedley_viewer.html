@@ -156,6 +156,11 @@
     border:1px solid var(--line-strong);border-radius:7px;margin-bottom:8px;font-family:inherit}
   .scope-panel .sp-chips{display:flex;flex-wrap:wrap;gap:5px;max-height:132px;overflow:auto}
   .scope-panel .sp-empty{font-size:12px;color:var(--muted)}
+  .period-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .period-row .period-lbl{font-size:12px;font-weight:700;color:var(--text-soft)}
+  .period-row select{font-size:12.5px;padding:5px 8px;border:1px solid var(--line-strong);
+    border-radius:7px;background:var(--surface);color:var(--ink);font-family:inherit}
+  .period-row .period-sep{color:var(--muted);font-weight:700}
   .chip{appearance:none;border:1px solid var(--line-strong);background:var(--surface);
     color:var(--text-soft);border-radius:999px;padding:3px 11px;font-size:12px;
     font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;
@@ -524,6 +529,7 @@ var SORT = { key:"応募日", dir:-1 };
 var SCOPE = {};                 // グローバル絞り込み（エリア/法人名/施設名 → 選択値の配列）
 var SCOPE_OPEN = null;          // 現在開いているスコープ段（"エリア"/"法人名"/"施設名" or null）
 var SCOPE_SEARCH = "";          // 事業所パネルの検索語
+var PERIOD = {from:"", to:""};  // 応募日の期間絞り込み（YYYY-MM。空=指定なし）
 var PIPE_HIDDEN = {};           // パイプラインで非表示にするステージ {ステージ:true}
 var APP_INCLUDE_FINISHED = true;// 応募者一覧に「選考終了」を含めるか
 var TREND_MODE = "route";       // 月別推移の内訳: route(応募ルート別) / job(職種別)
@@ -576,7 +582,17 @@ function inScope(r){
   }
   return true;
 }
-function scopedApplicants(){ return STATE.applicants.filter(inScope); }
+function inPeriod(r){
+  if(!PERIOD.from && !PERIOD.to) return true;
+  var mk=applyMonth(r["応募日"]||"");
+  if(!mk) return false;                 // 応募日不明は期間指定時は除外
+  if(PERIOD.from && mk<PERIOD.from) return false;
+  if(PERIOD.to && mk>PERIOD.to) return false;
+  return true;
+}
+function scopedApplicants(){
+  return STATE.applicants.filter(function(r){ return inScope(r) && inPeriod(r); });
+}
 function scopedDashboard(){
   // ダッシュボードは法人単位。法人スコープ（複数選択可）のみ適用。
   var corps=SCOPE["法人名"];
@@ -737,7 +753,7 @@ function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); 
    ========================================================================= */
 function renderAll(){
   // 新しいデータ読み込み時は表示範囲・選択をリセット
-  SCOPE={}; SCOPE_OPEN=null; SCOPE_SEARCH=""; PIPE_HIDDEN={}; APP_INCLUDE_FINISHED=true; TREND_MODE="route"; TREND_GRAN="month"; JOB_HIDDEN={};
+  SCOPE={}; SCOPE_OPEN=null; SCOPE_SEARCH=""; PERIOD={from:"",to:""}; PIPE_HIDDEN={}; APP_INCLUDE_FINISHED=true; TREND_MODE="route"; TREND_GRAN="month"; JOB_HIDDEN={};
   var cf=el("chkFinished"); if(cf) cf.checked=true;
   var tgr=el("trendGran"); if(tgr) tgr.querySelectorAll(".seg-btn").forEach(function(x){
     x.setAttribute("aria-selected", x.getAttribute("data-gran")==="month"?"true":"false"); });
@@ -768,7 +784,6 @@ function renderScoped(){
 function buildScopeBar(){
   var box=el("scopeFields"); clear(box);
   var fields=scopeFieldsPresent();
-  // 各段の選択可能値（上位選択で絞る）を計算
   function optionsFor(idx){
     var f=fields[idx];
     var ancestors=fields.slice(0,idx).map(function(x){return x.key;});
@@ -791,92 +806,129 @@ function buildScopeBar(){
     } else opts.sort();
     return {vals:vals, opts:opts};
   }
-  // 選択済みのうち現在の選択肢に無いものを掃除
   fields.forEach(function(f,idx){
     if(!SCOPE[f.key]) return;
     var o=optionsFor(idx);
     SCOPE[f.key]=SCOPE[f.key].filter(function(v){return o.vals[v];});
     if(!SCOPE[f.key].length) delete SCOPE[f.key];
   });
-
-  // 表示する段（エリアはhasAreaなら常に、法人/事業所は候補2件以上 or 選択中）
   var shown=[];
   fields.forEach(function(f,idx){
     var o=optionsFor(idx);
     var show=(f.key==="エリア")||o.opts.length>=2||(SCOPE[f.key]&&SCOPE[f.key].length);
     if(show) shown.push({f:f, idx:idx, opts:o.opts});
   });
-  if(SCOPE_OPEN && !shown.some(function(x){return x.f.key===SCOPE_OPEN;})) SCOPE_OPEN=null;
+  // 応募日の月一覧（期間フィルタ用）
+  var months={};
+  STATE.applicants.forEach(function(r){ var mk=applyMonth(r["応募日"]||""); if(mk) months[mk]=1; });
+  var monthList=Object.keys(months).sort();
+  var hasPeriod=monthList.length>0;
 
-  if(!shown.length){
-    var corp=(STATE.applicants[0]||{})["法人名"]||"";
-    box.innerHTML='<span class="muted" style="font-size:12px">この範囲（'+esc(corp)+
+  if(SCOPE_OPEN && SCOPE_OPEN!=="__period__" && !shown.some(function(x){return x.f.key===SCOPE_OPEN;})) SCOPE_OPEN=null;
+  if(SCOPE_OPEN==="__period__" && !hasPeriod) SCOPE_OPEN=null;
+
+  if(!shown.length && !hasPeriod){
+    var corp0=(STATE.applicants[0]||{})["法人名"]||"";
+    box.innerHTML='<span class="muted" style="font-size:12px">この範囲（'+esc(corp0)+
       '）の全データを表示しています。'+
       (STATE.hasArea?'':'エリア（都道府県）で絞り込むには、エリアマスタ（area_master.csv）も一緒に読み込んでください。')+
       '</span>';
     return;
   }
 
-  // ── ボタン行（常時1行・コンパクト）──
+  function periodSummary(){
+    if(!PERIOD.from && !PERIOD.to) return "全期間";
+    return (PERIOD.from||"最初")+"〜"+(PERIOD.to||"最新");
+  }
+  function summaryOf(key){
+    var sel=SCOPE[key]||[];
+    return sel.length===0 ? "すべて"
+         : (sel.length===1 ? (sel[0].length>12?sel[0].slice(0,12)+"…":sel[0]) : sel.length+"件");
+  }
+
+  // ── ボタン行 ──
   var btnRow=document.createElement("div"); btnRow.className="scope-buttons";
   shown.forEach(function(x){
     var sel=SCOPE[x.f.key]||[];
-    var summary = sel.length===0 ? "すべて"
-                : (sel.length===1 ? (sel[0].length>12?sel[0].slice(0,12)+"…":sel[0])
-                : sel.length+"件");
     var b=document.createElement("button");
     b.className="scope-btn"+(SCOPE_OPEN===x.f.key?" open":"")+(sel.length?" has-sel":"");
-    b.innerHTML=esc(x.f.label)+'<span class="sb-cnt">'+esc(summary)+'</span><span class="sb-car">▾</span>';
+    b.innerHTML=esc(x.f.label)+'<span class="sb-cnt">'+esc(summaryOf(x.f.key))+'</span><span class="sb-car">▾</span>';
     b.addEventListener("click", function(){
-      SCOPE_OPEN = (SCOPE_OPEN===x.f.key) ? null : x.f.key;
-      SCOPE_SEARCH="";
-      buildScopeBar();
+      SCOPE_OPEN=(SCOPE_OPEN===x.f.key)?null:x.f.key; SCOPE_SEARCH=""; buildScopeBar();
     });
     btnRow.appendChild(b);
   });
+  if(hasPeriod){
+    var hasP=!!(PERIOD.from||PERIOD.to);
+    var pb=document.createElement("button");
+    pb.className="scope-btn"+(SCOPE_OPEN==="__period__"?" open":"")+(hasP?" has-sel":"");
+    pb.innerHTML='期間<span class="sb-cnt">'+esc(periodSummary())+'</span><span class="sb-car">▾</span>';
+    pb.addEventListener("click", function(){
+      SCOPE_OPEN=(SCOPE_OPEN==="__period__")?null:"__period__"; buildScopeBar();
+    });
+    btnRow.appendChild(pb);
+  }
   box.appendChild(btnRow);
 
-  // ── 開いている段のパネル（チップ選択・複数可）──
-  if(SCOPE_OPEN){
-    var cur=shown.filter(function(x){return x.f.key===SCOPE_OPEN;})[0];
+  // ── パネル（期間 or 階層のいずれか）──
+  if(SCOPE_OPEN==="__period__"){
     var panel=document.createElement("div"); panel.className="scope-panel";
-    var opts=cur.opts;
-    var many=opts.length>14;
+    function monthOptions(sel){
+      return '<option value="">指定なし</option>'+monthList.map(function(m){
+        return '<option value="'+esc(m)+'"'+(sel===m?" selected":"")+'>'+esc(m)+'</option>';
+      }).join("");
+    }
+    var wrap=document.createElement("div"); wrap.className="period-row";
+    wrap.innerHTML='<span class="period-lbl">応募日</span>'+
+      '<select id="perFrom">'+monthOptions(PERIOD.from)+'</select>'+
+      '<span class="period-sep">〜</span>'+
+      '<select id="perTo">'+monthOptions(PERIOD.to)+'</select>'+
+      '<button class="chip chip-all" id="perClear" style="margin-left:8px">全期間</button>';
+    panel.appendChild(wrap);
+    var note=document.createElement("div");
+    note.className="sp-empty"; note.style.marginTop="6px";
+    note.textContent="例）開始に 2025-04 を選び、終了を「指定なし」にすると 2025年4月〜最新 を表示します。";
+    panel.appendChild(note);
+    box.appendChild(panel);
+    var pf=panel.querySelector("#perFrom"), pt=panel.querySelector("#perTo");
+    function applyPeriod(){
+      PERIOD.from=pf.value; PERIOD.to=pt.value;
+      if(PERIOD.from && PERIOD.to && PERIOD.from>PERIOD.to){ var t=PERIOD.from; PERIOD.from=PERIOD.to; PERIOD.to=t; }
+      buildScopeBar(); renderScoped();
+    }
+    pf.addEventListener("change", applyPeriod);
+    pt.addEventListener("change", applyPeriod);
+    panel.querySelector("#perClear").addEventListener("click", function(){
+      PERIOD.from=""; PERIOD.to=""; buildScopeBar(); renderScoped();
+    });
+  } else if(SCOPE_OPEN){
+    var cur=shown.filter(function(x){return x.f.key===SCOPE_OPEN;})[0];
+    var panel2=document.createElement("div"); panel2.className="scope-panel";
+    var opts=cur.opts, many=opts.length>14;
     if(many){
       var search=document.createElement("input");
       search.className="sp-search"; search.type="text";
-      search.placeholder="絞り込み検索（例：施設名の一部）";
-      search.value=SCOPE_SEARCH;
+      search.placeholder="絞り込み検索（例：施設名の一部）"; search.value=SCOPE_SEARCH;
       search.addEventListener("input", function(){ SCOPE_SEARCH=search.value; renderChips(); });
-      panel.appendChild(search);
+      panel2.appendChild(search);
     }
     var chipWrap=document.createElement("div"); chipWrap.className="sp-chips";
-    panel.appendChild(chipWrap);
-    box.appendChild(panel);
-    if(many){ // フォーカスを検索に
-      setTimeout(function(){ var i=panel.querySelector(".sp-search"); if(i) i.focus(); },0);
-    }
+    panel2.appendChild(chipWrap); box.appendChild(panel2);
+    if(many) setTimeout(function(){ var i=panel2.querySelector(".sp-search"); if(i) i.focus(); },0);
     renderChips();
-
     function renderChips(){
       clear(chipWrap);
       var sel=SCOPE[cur.f.key]||[];
-      // すべて
       var all=document.createElement("button");
       all.className="chip chip-all"; all.textContent="すべて";
       all.setAttribute("aria-pressed", sel.length?"false":"true");
       all.addEventListener("click", function(){
-        delete SCOPE[cur.f.key];
-        clearDescendants(cur.idx);
-        buildScopeBar(); renderScoped();
+        delete SCOPE[cur.f.key]; clearDescendants(cur.idx); buildScopeBar(); renderScoped();
       });
       chipWrap.appendChild(all);
       var q=SCOPE_SEARCH.trim().toLowerCase();
       var list=opts.filter(function(o){ return !q || o.toLowerCase().indexOf(q)>=0; });
-      if(!list.length){
-        var e=document.createElement("span"); e.className="sp-empty";
-        e.textContent="該当なし"; chipWrap.appendChild(e); return;
-      }
+      if(!list.length){ var e=document.createElement("span"); e.className="sp-empty"; e.textContent="該当なし"; chipWrap.appendChild(e); return; }
       list.forEach(function(o){
         var on=sel.indexOf(o)>=0;
         var c=document.createElement("button");
@@ -886,27 +938,18 @@ function buildScopeBar(){
           var i=SCOPE[cur.f.key].indexOf(o);
           if(i>=0) SCOPE[cur.f.key].splice(i,1); else SCOPE[cur.f.key].push(o);
           if(!SCOPE[cur.f.key].length) delete SCOPE[cur.f.key];
-          clearDescendants(cur.idx);
-          renderScoped();
-          // ボタン要約と自段チップだけ更新（パネルは開いたまま）
-          updateButtonSummaries(); renderChips();
+          clearDescendants(cur.idx); renderScoped(); updateButtonSummaries(); renderChips();
         });
         chipWrap.appendChild(c);
       });
     }
-    function clearDescendants(idx){
-      fields.forEach(function(x,j){ if(j>idx) delete SCOPE[x.key]; });
-    }
+    function clearDescendants(idx){ fields.forEach(function(x,j){ if(j>idx) delete SCOPE[x.key]; }); }
     function updateButtonSummaries(){
       var btns=btnRow.querySelectorAll(".scope-btn");
       shown.forEach(function(x,i){
-        var sel=SCOPE[x.f.key]||[];
-        var summary = sel.length===0 ? "すべて"
-                    : (sel.length===1 ? (sel[0].length>12?sel[0].slice(0,12)+"…":sel[0])
-                    : sel.length+"件");
-        var b=btns[i]; if(!b) return;
+        var b=btns[i]; if(!b) return; var sel=SCOPE[x.f.key]||[];
         b.className="scope-btn"+(SCOPE_OPEN===x.f.key?" open":"")+(sel.length?" has-sel":"");
-        b.innerHTML=esc(x.f.label)+'<span class="sb-cnt">'+esc(summary)+'</span><span class="sb-car">▾</span>';
+        b.innerHTML=esc(x.f.label)+'<span class="sb-cnt">'+esc(summaryOf(x.f.key))+'</span><span class="sb-car">▾</span>';
       });
     }
   }
@@ -1552,7 +1595,7 @@ function init(){
   });
   // 表示範囲リセット
   var bsc=el("btnScopeClear");
-  if(bsc) bsc.addEventListener("click", function(){ SCOPE={}; SCOPE_OPEN=null; SCOPE_SEARCH=""; buildScopeBar(); renderScoped(); });
+  if(bsc) bsc.addEventListener("click", function(){ SCOPE={}; SCOPE_OPEN=null; SCOPE_SEARCH=""; PERIOD={from:"",to:""}; buildScopeBar(); renderScoped(); });
   document.querySelectorAll(".tab").forEach(function(t){
     t.addEventListener("click", function(){ showTab(t.getAttribute("data-tab")); });
   });
