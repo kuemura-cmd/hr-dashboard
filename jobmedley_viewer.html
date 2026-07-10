@@ -394,6 +394,11 @@
       </div>
     </div>
     <div class="section-gap"></div>
+    <div class="card card-pad">
+      <h3 style="margin-bottom:12px">法人別の応募数 <span class="h3sub">法人ごとの件数と割合</span></h3>
+      <div class="bars" id="barsCorp"></div>
+    </div>
+    <div class="section-gap"></div>
     <div class="grid two-col">
       <div class="card card-pad">
         <h3 style="margin-bottom:12px">施設別の応募数</h3>
@@ -1032,6 +1037,7 @@ function renderSummary(){
   renderBars("barsRoute", countBy(a,"応募経路"), total, routeColor, null, true);
   renderBars("barsKubun", countBy(a,"選考区分"), total, function(k){
     return k==="選考中" ? "#0e7490" : "#7d8aa0"; }, null, true);
+  renderBars("barsCorp", countBy(a,"法人名"), total, function(){return "#3f6f8f";}, null, true);
   renderBars("barsFacility", countBy(a,"施設名"), total, function(){return "#2f6f8f";}, 12);
   renderBars("barsJob", countBy(a,"求人名"), total, function(){return "#4a8b9c";}, 12);
 }
