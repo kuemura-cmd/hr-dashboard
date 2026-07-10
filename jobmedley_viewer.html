@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ジョブメドレー 採用状況ビューア</title>
+<style>
+  /* ── デザイントークン ──────────────────────────
+     クリニカル・ティール（信頼/医療）＋桜アクセント（スカウト経由＝ROIの物語）。
+     ステージは「順序」が情報なので、応募→入職へ薄→濃のティール・ランプで encode。 */
+  :root{
+    --ink:#1b2230; --ink-soft:#46506420; --text-soft:#4a5468; --muted:#8a93a6;
+    --line:#e4e8ef; --line-strong:#cfd6e1;
+    --paper:#f4f6f9; --surface:#ffffff; --surface-2:#fafbfc;
+    --primary:#0e7490; --primary-deep:#0b5563; --primary-soft:#e3f1f4;
+    --sakura:#d36a82; --sakura-deep:#b84e68; --sakura-soft:#f8e7ec;
+    --ok:#2f8f6b; --ok-soft:#e3f3ec; --warn:#b9842b;
+    --shadow:0 1px 2px rgba(20,30,50,.05), 0 6px 22px rgba(20,30,50,.06);
+    --radius:14px; --radius-s:9px;
+    --jp:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Yu Gothic","Meiryo",sans-serif;
+    --ui:"Segoe UI",system-ui,-apple-system,var(--jp);
+    --num:"SF Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--ui); color:var(--ink); background:var(--paper);
+    line-height:1.55; -webkit-font-smoothing:antialiased;
+    font-variant-numeric:tabular-nums;
+  }
+  .num{font-variant-numeric:tabular-nums; font-family:var(--num);}
+  h1,h2,h3{margin:0; font-weight:650; letter-spacing:-.01em}
+  button{font-family:inherit}
+  a{color:var(--primary)}
+
+  /* ── ヘッダー ── */
+  header.app{
+    position:sticky; top:0; z-index:30; background:rgba(255,255,255,.86);
+    backdrop-filter:saturate(1.2) blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .head-row{max-width:1240px; margin:0 auto; padding:14px 24px;
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap}
+  .brand{display:flex; align-items:center; gap:12px; min-width:0}
+  .brand .mark{width:34px;height:34px;border-radius:9px;flex:none;
+    background:linear-gradient(135deg,var(--primary),var(--primary-deep));
+    display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;
+    box-shadow:var(--shadow)}
+  .brand .mark::after{content:"J"}
+  .brand h1{font-size:17px}
+  .brand .sub{font-size:11.5px;color:var(--muted);letter-spacing:.04em;
+    text-transform:uppercase;font-weight:600}
+  .head-spacer{flex:1 1 auto}
+  .datestamp{font-size:12px;color:var(--text-soft);text-align:right;line-height:1.3}
+  .datestamp b{display:block;font-size:13px;color:var(--ink);font-weight:650}
+  .datestamp .lbl{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--muted);font-weight:600}
+  .btn{border:1px solid var(--line-strong); background:var(--surface);
+    color:var(--ink); padding:8px 14px; border-radius:var(--radius-s);
+    font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;
+    transition:border-color .15s, background .15s, transform .05s}
+  .btn:hover{border-color:var(--primary); color:var(--primary-deep)}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--primary); border-color:var(--primary); color:#fff}
+  .btn.primary:hover{background:var(--primary-deep); color:#fff}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--text-soft)}
+  .btn.ghost:hover{color:var(--primary-deep);border-color:var(--line)}
+
+  /* ── タブ ── */
+  nav.tabs{max-width:1240px;margin:0 auto;padding:0 16px;display:flex;gap:2px;
+    overflow-x:auto}
+  /* グローバル表示範囲バー */
+  .scopebar{max-width:1240px;margin:0 auto;padding:9px 24px;display:flex;align-items:flex-start;
+    gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);background:var(--surface-2)}
+  .scope-lbl{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--muted)}
+  .scope-fields{display:flex;gap:10px;flex-wrap:wrap;flex:1 1 auto}
+  .scope-fields .sf{display:flex;align-items:center;gap:6px}
+  .scope-fields .sf label{font-size:12px;color:var(--text-soft);font-weight:600}
+  .scope-fields select{font-family:inherit;font-size:13px;padding:6px 9px;
+    border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
+  .scope-fields select:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+  .scope-arrow{color:var(--muted);font-size:16px;margin:0 2px 0 -2px;font-weight:700}
+
+  /* ダッシュボード数値セル（中央寄せ・拡大・非ゼロ強調）*/
+  table.data td.bignum{text-align:center;font-size:20px;font-weight:700;
+    font-variant-numeric:tabular-nums;font-family:var(--num);color:var(--ink)}
+  table.data th.center{text-align:center}
+  table.data td.alert{background:var(--sakura-soft);color:var(--sakura-deep);
+    border-radius:6px}
+  table.data td.alert::after{content:" ●";font-size:9px;vertical-align:middle;color:var(--sakura)}
+
+  /* パイプライン操作（ステージ選択）*/
+  .pipe-controls{display:flex;flex-wrap:wrap;gap:6px 8px;margin-bottom:12px}
+  .stage-chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+    border:1px solid var(--line-strong);border-radius:999px;padding:4px 10px;cursor:pointer;
+    user-select:none;background:var(--surface);transition:opacity .15s}
+  .stage-chk input{margin:0;accent-color:var(--primary)}
+  .stage-chk.off{opacity:.42}
+  .stage-chk .sc-dot{width:9px;height:9px;border-radius:3px}
+  .group-tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;
+    padding:1px 7px;border-radius:5px;margin-right:6px;vertical-align:middle}
+  .group-tag.active{background:var(--primary-soft);color:var(--primary-deep)}
+  .group-tag.closed{background:#eceff4;color:#6b7589}
+  .subtotal{font-size:12px;color:var(--text-soft);margin-top:10px}
+  .subtotal b{color:var(--ink);font-variant-numeric:tabular-nums}
+  /* 選考状況の意味リファレンス */
+  .ref-toggle{font-size:12.5px;color:var(--primary);cursor:pointer;font-weight:600;
+    background:none;border:0;padding:0;margin-top:12px}
+  .ref-panel{margin-top:12px;border-top:1px dashed var(--line-strong);padding-top:12px}
+  .ref-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px 18px}
+  .ref-item{display:flex;gap:9px;font-size:12.5px;align-items:flex-start}
+  .ref-item .ri-name{font-weight:700;white-space:nowrap;display:flex;align-items:center;gap:6px}
+  .ref-item .ri-mean{color:var(--text-soft)}
+  .bar-pct{font-size:11px;color:var(--muted);margin-left:5px}
+  /* 月別表の数値（2段階拡大・中央寄せ）*/
+  table.data td.tnum{text-align:center;font-size:17px;font-weight:650;
+    font-variant-numeric:tabular-nums;font-family:var(--num)}
+  table.data th.tnum-h{text-align:center}
+  /* セグメント切替（月別推移：ルート別/職種別）*/
+  .seg-toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:9px;
+    overflow:hidden;margin-bottom:14px}
+  .seg-btn{appearance:none;border:0;background:var(--surface);cursor:pointer;
+    padding:7px 16px;font-size:13px;font-weight:600;color:var(--text-soft);
+    font-family:inherit;border-right:1px solid var(--line)}
+  .seg-btn:last-child{border-right:0}
+  .seg-btn[aria-selected="true"]{background:var(--primary);color:#fff}
+  .trend-legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;
+    font-size:12px;color:var(--text-soft)}
+  .trend-legend .lg{display:flex;align-items:center;gap:6px}
+  .trend-controls{display:flex;flex-wrap:wrap;gap:10px 16px;margin-bottom:14px}
+  .trend-controls .seg-toggle{margin-bottom:0}
+  .trend-caption{font-size:12px;color:var(--text-soft);margin-top:10px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 11px}
+  .trend-caption b{color:var(--ink)}
+  /* 職種ピッカー（職種別で表示する職種を選択）*/
+  .job-picker{margin-bottom:12px}
+  .job-picker .jp-lbl{font-size:11px;font-weight:700;letter-spacing:.03em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .job-picker .jp-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:96px;overflow:auto}
+  /* 表示範囲：選択式チップ（multi-select）*/
+  .scope-fields{display:flex;flex-direction:column;gap:0;flex:1 1 auto}
+  .scope-buttons{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .scope-btn{appearance:none;display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);
+    border-radius:8px;padding:5px 11px;font-size:12.5px;font-weight:600;cursor:pointer;
+    font-family:inherit;white-space:nowrap}
+  .scope-btn:hover{border-color:var(--primary)}
+  .scope-btn.open{border-color:var(--primary);background:var(--primary-soft);color:var(--primary-deep)}
+  .scope-btn .sb-cnt{color:var(--muted);font-weight:600}
+  .scope-btn.has-sel .sb-cnt{color:var(--primary-deep)}
+  .scope-btn .sb-car{color:var(--muted);font-size:10px}
+  .scope-panel{margin-top:9px;border:1px solid var(--line);border-radius:9px;
+    background:var(--surface-2);padding:9px 11px}
+  .scope-panel .sp-search{width:100%;max-width:280px;font-size:12.5px;padding:6px 9px;
+    border:1px solid var(--line-strong);border-radius:7px;margin-bottom:8px;font-family:inherit}
+  .scope-panel .sp-chips{display:flex;flex-wrap:wrap;gap:5px;max-height:132px;overflow:auto}
+  .scope-panel .sp-empty{font-size:12px;color:var(--muted)}
+  .chip{appearance:none;border:1px solid var(--line-strong);background:var(--surface);
+    color:var(--text-soft);border-radius:999px;padding:3px 11px;font-size:12px;
+    font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;
+    transition:background .12s,border-color .12s,color .12s}
+  .chip:hover{border-color:var(--primary)}
+  .chip[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:#fff}
+  .chip.chip-all[aria-pressed="true"]{background:var(--ink);border-color:var(--ink)}
+  .tab{appearance:none;border:0;background:transparent;cursor:pointer;
+    padding:11px 16px 13px;font-size:13.5px;font-weight:600;color:var(--muted);
+    border-bottom:2.5px solid transparent;white-space:nowrap;letter-spacing:.01em}
+  .tab:hover{color:var(--text-soft)}
+  .tab[aria-selected="true"]{color:var(--primary-deep);
+    border-bottom-color:var(--primary)}
+
+  main{max-width:1240px;margin:0 auto;padding:24px}
+  .view{display:none; animation:fade .28s ease both}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.view{animation:none}*{transition:none!important}}
+
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--primary);margin-bottom:6px}
+  .view-title{font-size:21px;margin-bottom:2px}
+  .view-desc{color:var(--text-soft);font-size:13px;margin:0 0 18px}
+
+  .card{background:var(--surface);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card-pad{padding:18px 20px}
+  .card h3{font-size:13px;letter-spacing:.02em}
+  .card .h3sub{font-size:11.5px;color:var(--muted);font-weight:500}
+  .grid{display:grid;gap:16px}
+
+  /* ── KPI ── */
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .kpi{padding:16px 18px}
+  .kpi .k-lbl{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.02em}
+  .kpi .k-val{font-size:30px;font-weight:700;letter-spacing:-.02em;margin-top:4px;color:var(--ink)}
+  .kpi .k-val.accent{color:var(--primary-deep)}
+  .kpi .k-val.sakura{color:var(--sakura-deep)}
+  .kpi .k-sub{font-size:11.5px;color:var(--text-soft);margin-top:2px}
+
+  /* ── テーブル ── */
+  table.data{width:100%;border-collapse:collapse;font-size:13px}
+  table.data th,table.data td{padding:9px 12px;text-align:left;
+    border-bottom:1px solid var(--line);vertical-align:top}
+  table.data thead th{position:sticky;top:0;background:var(--surface-2);z-index:1;
+    font-size:11.5px;font-weight:700;color:var(--text-soft);letter-spacing:.02em;
+    white-space:nowrap;cursor:default}
+  table.data th.sortable{cursor:pointer;user-select:none}
+  table.data th.sortable:hover{color:var(--primary-deep)}
+  table.data th .arrow{color:var(--primary);font-size:10px;margin-left:3px}
+  table.data tbody tr:hover{background:var(--surface-2)}
+  table.data td.n{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--num);
+    white-space:nowrap}
+  .tbl-wrap{overflow:auto;max-height:62vh;border-radius:var(--radius);
+    border:1px solid var(--line);background:var(--surface)}
+
+  /* ── ラベル / バッジ ── */
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;
+    font-size:11.5px;font-weight:600;white-space:nowrap}
+  .pill.route-scout{background:var(--sakura-soft);color:var(--sakura-deep)}
+  .pill.route-normal{background:var(--primary-soft);color:var(--primary-deep)}
+  .pill.kubun{background:#eef1f6;color:var(--text-soft)}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block;flex:none}
+
+  /* ── パイプライン（署名要素）── */
+  .pipeline{display:flex;width:100%;height:46px;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line)}
+  .pipeline .seg{display:flex;flex-direction:column;justify-content:center;
+    color:#fff;padding:0 10px;min-width:0;transition:flex-grow .5s ease}
+  .pipeline .seg .sg-n{font-size:14px;font-weight:700;line-height:1.1}
+  .pipeline .seg .sg-l{font-size:10px;opacity:.92;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .pipe-legend{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:12px}
+  .pipe-legend .lg{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-soft)}
+  .pipe-legend .lg b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+  /* ── 横棒（内訳）── */
+  .bars{display:flex;flex-direction:column;gap:9px}
+  .bar-row{display:grid;grid-template-columns:130px 1fr 52px;align-items:center;gap:10px}
+  .bar-row .bl{font-size:12.5px;color:var(--text-soft);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .bar-track{height:20px;background:#eef1f5;border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:6px;transition:width .5s ease}
+  .bar-row .bn{font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums;
+    font-family:var(--num);color:var(--ink);font-weight:600}
+  .two-col{grid-template-columns:1fr 1fr}
+  @media (max-width:860px){.two-col{grid-template-columns:1fr}}
+
+  /* ── フィルタ ── */
+  .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+  .ffield{display:flex;flex-direction:column;gap:4px}
+  .ffield label{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.03em;
+    text-transform:uppercase}
+  .ffield select,.ffield input{font-family:inherit;font-size:13px;padding:8px 10px;
+    border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);
+    color:var(--ink)}
+  .ffield select:focus,.ffield input:focus{outline:2px solid var(--primary-soft);
+    border-color:var(--primary)}
+  .filter-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    flex-wrap:wrap;margin:14px 0 4px}
+  .result-note{font-size:13px;color:var(--text-soft)}
+  .result-note b{color:var(--ink);font-size:15px;font-variant-numeric:tabular-nums}
+
+  /* ── 月別グラフ ── */
+  .chart-wrap{overflow-x:auto}
+  svg .axis-line{stroke:var(--line-strong);stroke-width:1}
+  svg .grid-line{stroke:var(--line);stroke-width:1;stroke-dasharray:2 4}
+  svg text{font-family:var(--ui);fill:var(--text-soft)}
+  svg .bar-seg{transition:height .4s ease, y .4s ease}
+
+  /* ── 空状態 / ドロップ ── */
+  .empty{max-width:620px;margin:7vh auto;text-align:center}
+  .empty .mark-lg{width:64px;height:64px;border-radius:18px;margin:0 auto 18px;
+    background:linear-gradient(135deg,var(--primary),var(--primary-deep));
+    display:grid;place-items:center;color:#fff;font-size:30px;font-weight:800;
+    box-shadow:var(--shadow)}
+  .empty h2{font-size:22px;margin-bottom:8px}
+  .empty p{color:var(--text-soft);font-size:14px;margin:0 auto 8px;max-width:480px}
+  .dropzone{margin-top:22px;border:2px dashed var(--line-strong);border-radius:var(--radius);
+    padding:30px;background:var(--surface);transition:border-color .15s, background .15s}
+  .dropzone.drag{border-color:var(--primary);background:var(--primary-soft)}
+  .dropzone .dz-actions{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+  .filelist{margin-top:14px;font-size:12.5px;color:var(--text-soft);text-align:left;
+    display:inline-block}
+  .filelist .ok{color:var(--ok)}
+  .hint{font-size:12px;color:var(--muted)}
+  .pii-note{margin-top:16px;font-size:12px;color:var(--warn);
+    background:#fdf6e9;border:1px solid #f0e2c2;border-radius:9px;padding:9px 12px}
+
+  .section-gap{height:18px}
+  .muted{color:var(--muted)} .soft{color:var(--text-soft)}
+  .right{text-align:right}
+  .nowrap{white-space:nowrap}
+  .hidden{display:none!important}
+  footer.app{max-width:1240px;margin:10px auto 30px;padding:0 24px;
+    font-size:11.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="app">
+  <div class="head-row">
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <h1>採用状況ビューア</h1>
+        <div class="sub">JobMedley Recruitment Pipeline</div>
+      </div>
+    </div>
+    <div class="head-spacer"></div>
+    <div class="datestamp" id="datestamp" hidden>
+      <span class="lbl">データ更新日（収集日時）</span>
+      <b id="dataDate">—</b>
+    </div>
+    <button class="btn" id="btnReload" hidden>別のCSVを読み込む</button>
+  </div>
+  <nav class="tabs" id="tabs" hidden>
+    <button class="tab" data-tab="dashboard" aria-selected="true">ダッシュボード</button>
+    <button class="tab" data-tab="summary" aria-selected="false">選考サマリー</button>
+    <button class="tab" data-tab="applicants" aria-selected="false">応募者一覧</button>
+    <button class="tab" data-tab="trend" aria-selected="false">月別推移</button>
+  </nav>
+  <div class="scopebar" id="scopeBar" hidden>
+    <span class="scope-lbl">表示範囲</span>
+    <div class="scope-fields" id="scopeFields"></div>
+    <button class="btn ghost" id="btnScopeClear" style="font-size:12px;padding:5px 10px">全体に戻す</button>
+  </div>
+</header>
+
+<main>
+  <!-- 空状態 / 読み込み -->
+  <section id="loader">
+    <div class="empty">
+      <div class="mark-lg">J</div>
+      <h2>CSVを読み込んでください</h2>
+      <p>ジョブメドレー収集ツールが出力した CSV を選ぶと、選考状況・応募経路・施設/求人の内訳、応募者一覧、月別推移を表示します。</p>
+      <p class="hint">対応ファイル：<b>screening_applicants_*.csv</b>（必須）／ <b>dashboard_summary_*.csv</b>（任意）／ <b>area_master.csv</b>（任意・エリア＝都道府県の判定に使用。施設マスタも可）。複数選択でまとめて読み込めます。</p>
+      <div class="dropzone" id="dropzone">
+        <div class="soft">ここに CSV をドラッグ＆ドロップ</div>
+        <div class="dz-actions">
+          <button class="btn primary" id="btnPick">CSVファイルを選ぶ</button>
+          <button class="btn" id="btnSample">サンプルデータで試す</button>
+        </div>
+        <div class="filelist" id="filelist"></div>
+      </div>
+      <div class="pii-note">個人情報保護の観点から、この一覧に<b>氏名は表示していません</b>。会員番号等も個人情報のため、社内ポリシー・個人情報保護法に沿って採用目的の範囲で取り扱ってください。データはこの画面内だけで処理され、どこにも送信されません。</div>
+    </div>
+  </section>
+  <input type="file" id="fileInput" accept=".csv" multiple class="hidden">
+
+  <!-- ① ダッシュボード -->
+  <section class="view" id="view-dashboard">
+    <div class="eyebrow">概況</div>
+    <h2 class="view-title">ダッシュボード</h2>
+    <p class="view-desc">トップページ数値（dashboard_summary）。法人ごとの未確認・未読・募集中の施設/求人。</p>
+    <div id="dashKpis" class="grid kpis" style="margin-bottom:16px"></div>
+    <div class="card">
+      <div class="card-pad" style="padding-bottom:6px"><h3>法人別 概況一覧</h3></div>
+      <div class="tbl-wrap" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">
+        <table class="data" id="dashTable"></table>
+      </div>
+    </div>
+    <p id="dashEmpty" class="view-desc hidden" style="margin-top:14px">dashboard_summary_*.csv が読み込まれていません。応募者データのみ読み込んだ場合、この表は空になります。</p>
+  </section>
+
+  <!-- ② 選考サマリー -->
+  <section class="view" id="view-summary">
+    <div class="eyebrow">パイプライン</div>
+    <h2 class="view-title">選考サマリー</h2>
+    <p class="view-desc">いま応募者がどのステージにいて、どの施設・求人に集まっているか。各内訳の合計はすべて総応募者数に一致します。</p>
+
+    <div class="card card-pad" style="margin-bottom:16px">
+      <h3 style="margin-bottom:3px">選考ステージの分布 <span class="h3sub" id="pipeTotal"></span></h3>
+      <div class="muted" style="font-size:12px;margin-bottom:12px">表示するステージを選んで集計できます（例：「選考終了」を外すと現在進行中の状況だけを見られます）。</div>
+      <div class="pipe-controls" id="pipeControls"></div>
+      <div class="pipeline" id="pipeline"></div>
+      <div class="pipe-legend" id="pipeLegend"></div>
+      <div class="subtotal" id="pipeSubtotal"></div>
+      <button class="ref-toggle" id="refToggle">▸ 選考状況の意味を表示（ジョブメドレー登録ガイド準拠）</button>
+      <div class="ref-panel hidden" id="refPanel"></div>
+    </div>
+
+    <div class="grid two-col">
+      <div class="card card-pad">
+        <h3 style="margin-bottom:12px">応募経路の内訳 <span class="h3sub">スカウト経由 vs 通常</span></h3>
+        <div class="bars" id="barsRoute"></div>
+      </div>
+      <div class="card card-pad">
+        <h3 style="margin-bottom:12px">選考区分 <span class="h3sub">選考中 / 選考済み</span></h3>
+        <div class="bars" id="barsKubun"></div>
+      </div>
+    </div>
+    <div class="section-gap"></div>
+    <div class="grid two-col">
+      <div class="card card-pad">
+        <h3 style="margin-bottom:12px">施設別の応募数</h3>
+        <div class="bars" id="barsFacility"></div>
+      </div>
+      <div class="card card-pad">
+        <h3 style="margin-bottom:12px">求人（職種）別の応募数</h3>
+        <div class="bars" id="barsJob"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③ 応募者一覧 -->
+  <section class="view" id="view-applicants">
+    <div class="eyebrow">名簿</div>
+    <h2 class="view-title">応募者一覧</h2>
+    <p class="view-desc">選考状況・応募経路・施設・求人・雇用形態で絞り込み、その結果をまとめて確認できます。採用費用は下限〜上限の合計レンジで集計します。</p>
+
+    <div class="card card-pad" style="margin-bottom:14px">
+      <div class="finished-toggle" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">
+        <label class="stage-chk" id="finishedToggle" style="border-color:var(--primary);background:var(--primary-soft)">
+          <input type="checkbox" id="chkFinished" checked>
+          <span>「選考終了」を含める</span>
+        </label>
+        <span class="muted" style="font-size:12px">現在の進行状況だけを見たいときは外し、過去からの積み上げを見たいときは含めます。</span>
+      </div>
+      <div class="filters" id="filters"></div>
+      <div class="filter-bar">
+        <div class="result-note">該当 <b id="fCount">0</b> 件
+          <span class="soft" id="fFee"></span>
+          <span class="soft" id="fRoute"></span>
+        </div>
+        <button class="btn ghost" id="btnClearFilter">絞り込みを解除</button>
+      </div>
+    </div>
+
+    <!-- 絞り込み結果のサマリー -->
+    <div class="grid two-col" id="filteredSummary" style="margin-bottom:14px"></div>
+
+    <div class="tbl-wrap">
+      <table class="data" id="appTable"></table>
+    </div>
+  </section>
+
+  <!-- ④ 月別推移 -->
+  <section class="view" id="view-trend">
+    <div class="eyebrow">推移</div>
+    <h2 class="view-title">月別の応募数推移</h2>
+    <p class="view-desc">応募日を <b>月別／週別／日別（曜日つき）</b> で集計。<b>応募ルート別</b>（スカウト経由／通常）と<b>職種別</b>の積み上げを切り替えられます。最新を初期表示します。</p>
+    <div class="card card-pad">
+      <div class="trend-controls">
+        <div class="seg-toggle" id="trendGran">
+          <button class="seg-btn" data-gran="month" aria-selected="true">月別</button>
+          <button class="seg-btn" data-gran="week" aria-selected="false">週別</button>
+          <button class="seg-btn" data-gran="day" aria-selected="false">日別</button>
+        </div>
+        <div class="seg-toggle" id="trendToggle">
+          <button class="seg-btn" data-mode="route" aria-selected="true">応募ルート別</button>
+          <button class="seg-btn" data-mode="job" aria-selected="false">職種別</button>
+        </div>
+      </div>
+      <div class="job-picker hidden" id="jobPicker">
+        <div class="jp-lbl">表示する職種</div>
+        <div class="jp-chips" id="jobChips"></div>
+      </div>
+      <div class="chart-wrap"><div id="trendChart"></div></div>
+    </div>
+    <div class="section-gap"></div>
+    <div class="card">
+      <div class="card-pad" style="padding-bottom:6px"><h3 id="trendTableTitle">月別の内訳</h3></div>
+      <div class="tbl-wrap" style="border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)">
+        <table class="data" id="trendTable"></table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="app" id="footer" hidden>
+  ジョブメドレー 採用状況ビューア — 単一HTML・サーバ不要・データは端末内のみで処理。
+</footer>
+
+<script>
+/* =========================================================================
+   ジョブメドレー 採用状況ビューア（依存ライブラリなし）
+   - utf-8-sig / RFC4180 風 CSV を自前パース
+   - screening_applicants から サマリー・月別を再集計（合計は常に一致）
+   - グラフは自前 SVG / CSS。localStorage 不使用。
+   ========================================================================= */
+"use strict";
+
+/* ── 定数 ── */
+var STAGE_ORDER = ["応募","書類選考","面接選考","内定","内定承諾","入職予定","入職完了","選考終了"];
+var STAGE_COLOR = {
+  "応募":"#9fd0d8","書類選考":"#6fbac6","面接選考":"#3f9fb0","内定":"#1f8497",
+  "内定承諾":"#0e7490","入職予定":"#0b5d6e","入職完了":"#2f8f6b","選考終了":"#aab2c0"
+};
+var ROUTE_SCOUT = "スカウト経由応募", ROUTE_NORMAL = "通常応募";
+
+/* 選考状況の意味（ジョブメドレー「選考状況の登録ガイド」より）と 選考中/選考済み区分 */
+var STAGE_MEANING = {
+  "応募":"求職者から応募が届いた初期状態",
+  "書類選考":"履歴書・職務経歴書やプロフィールを確認・検討中",
+  "面接選考":"面接・面談・見学の調整中／実施済みで検討中",
+  "内定":"採用を決定した状態",
+  "内定承諾":"求職者が内定を受け入れた状態",
+  "入職予定":"入職日（初出勤日）が確定した状態",
+  "入職完了":"実際に初出勤した状態",
+  "選考終了":"選考が終了（不採用・内定辞退・離脱・他媒体で選考 等）"
+};
+var STAGE_ACTIVE = ["応募","書類選考","面接選考","内定","内定承諾","入職予定"]; // 選考中
+var STAGE_CLOSED = ["入職完了","選考終了"];                                   // 選考済み
+function stageGroup(s){ return STAGE_CLOSED.indexOf(s)>=0 ? "選考済み" : "選考中"; }
+
+/* 都道府県（エリア）— 施設・求人CSVの「所在地」先頭から抽出 */
+var PREFS = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県",
+  "群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県",
+  "長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県",
+  "和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県",
+  "福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+var PREF_INDEX = {}; PREFS.forEach(function(p,i){ PREF_INDEX[p]=i; });
+var AREA_UNKNOWN = "(エリア不明)";
+function extractPref(s){
+  if(!s) return "";
+  var t=String(s).trim();
+  for(var i=0;i<PREFS.length;i++){ if(t.indexOf(PREFS[i])===0) return PREFS[i]; }
+  for(var j=0;j<PREFS.length;j++){ if(t.indexOf(PREFS[j])>=0) return PREFS[j]; }
+  return "";
+}
+
+/* ── 状態 ── */
+var STATE = { applicants:[], dashboard:[], dataDate:"", areaMap:{}, areaMapByCorp:{}, hasArea:false };
+var SORT = { key:"応募日", dir:-1 };
+var SCOPE = {};                 // グローバル絞り込み（エリア/法人名/施設名 → 選択値の配列）
+var SCOPE_OPEN = null;          // 現在開いているスコープ段（"エリア"/"法人名"/"施設名" or null）
+var SCOPE_SEARCH = "";          // 事業所パネルの検索語
+var PIPE_HIDDEN = {};           // パイプラインで非表示にするステージ {ステージ:true}
+var APP_INCLUDE_FINISHED = true;// 応募者一覧に「選考終了」を含めるか
+var TREND_MODE = "route";       // 月別推移の内訳: route(応募ルート別) / job(職種別)
+var TREND_GRAN = "month";       // 粒度: month(月別) / week(週別) / day(日別)
+var JOB_HIDDEN = {};            // 職種別で非表示にする職種 {求人名:true}
+/* 職種別の積み上げ用パレット（クリニカル系で識別しやすく） */
+var JOB_PALETTE = ["#0e7490","#d36a82","#2f8f6b","#b9842b","#6f5aa6","#3f9fb0",
+                   "#c0607a","#5a8f3f","#9a6a3a","#4a6fa5","#8a93a6","#0b5563"];
+
+/* 施設→都道府県の対応で各応募者に「エリア」を付与。
+   ・施設マスタを読み込んでいればそれを優先（権威）
+   ・マスタが無くても、応募者CSVに「エリア」列があればそれを使う（収集ツールが直接出力した場合）*/
+function annotateArea(){
+  var masterLoaded = Object.keys(STATE.areaMap).length>0;
+  if(masterLoaded){
+    STATE.applicants.forEach(function(r){
+      var name=(r["施設名"]||"").trim(), corp=(r["法人名"]||"").trim();
+      var pref = STATE.areaMapByCorp[corp+"\u0001"+name] || STATE.areaMap[name] || "";
+      r["エリア"] = pref || AREA_UNKNOWN;
+    });
+    STATE.hasArea=true;
+    return;
+  }
+  var csvHasArea = STATE.applicants.some(function(r){ return (r["エリア"]||"").trim()!==""; });
+  if(csvHasArea){
+    STATE.applicants.forEach(function(r){ if(!(r["エリア"]||"").trim()) r["エリア"]=AREA_UNKNOWN; });
+    STATE.hasArea=true;
+  } else {
+    STATE.applicants.forEach(function(r){ delete r["エリア"]; });
+    STATE.hasArea=false;
+  }
+}
+
+/* スコープ対象になりうる軸（エリア＞法人＞事業所の階層順）*/
+var SCOPE_FIELDS = [
+  {key:"エリア",  label:"エリア（都道府県）"},
+  {key:"法人名",  label:"法人"},
+  {key:"施設名",  label:"事業所（施設）"}
+];
+function scopeFieldsPresent(){
+  return SCOPE_FIELDS.filter(function(f){
+    if(f.key==="エリア") return STATE.hasArea;
+    return STATE.applicants.some(function(r){ return (r[f.key]||"").trim()!==""; });
+  });
+}
+function inScope(r){
+  for(var k in SCOPE){
+    var vals=SCOPE[k];
+    if(vals && vals.length && vals.indexOf((r[k]||"").trim())<0) return false;
+  }
+  return true;
+}
+function scopedApplicants(){ return STATE.applicants.filter(inScope); }
+function scopedDashboard(){
+  // ダッシュボードは法人単位。法人スコープ（複数選択可）のみ適用。
+  var corps=SCOPE["法人名"];
+  return STATE.dashboard.filter(function(r){
+    if(corps && corps.length && corps.indexOf((r["法人名"]||"").trim())<0) return false;
+    return true;
+  });
+}
+
+/* ── CSV パーサ（BOM除去・引用符・改行対応）── */
+function parseCSV(text){
+  if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM
+  var rows=[], row=[], field="", i=0, n=text.length, inQ=false;
+  while(i<n){
+    var c=text[i];
+    if(inQ){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field+='"'; i+=2; continue; }
+        inQ=false; i++; continue;
+      }
+      field+=c; i++; continue;
+    }
+    if(c === '"'){ inQ=true; i++; continue; }
+    if(c === ','){ row.push(field); field=""; i++; continue; }
+    if(c === '\r'){ i++; continue; }
+    if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=""; i++; continue; }
+    field+=c; i++;
+  }
+  if(field.length>0 || row.length>0){ row.push(field); rows.push(row); }
+  if(!rows.length) return {headers:[], rows:[]};
+  var headers = rows[0].map(function(h){return h.trim();});
+  var out=[];
+  for(var r=1;r<rows.length;r++){
+    if(rows[r].length===1 && rows[r][0]==="") continue; // 空行
+    var o={};
+    for(var k=0;k<headers.length;k++) o[headers[k]] = rows[r][k]!==undefined ? rows[r][k] : "";
+    out.push(o);
+  }
+  return {headers:headers, rows:out};
+}
+
+/* ── ファイル種別判定（ヘッダ内容で）── */
+function classify(headers){
+  var h = headers.join("|");
+  if(h.indexOf("未確認の応募")>=0 || h.indexOf("募集中の施設")>=0) return "dashboard";
+  if(h.indexOf("選考区分")>=0 && h.indexOf("会員番号")>=0) return "applicants";
+  // エリアマスタ：施設名＋（エリア or 所在地）を持ち、応募者ではないもの
+  if(h.indexOf("施設名")>=0 &&
+     (h.indexOf("エリア")>=0 || h.indexOf("所在地")>=0)) return "facility";
+  if(h.indexOf("集計区分")>=0) return "summary";   // 任意（再集計するため未使用でも可）
+  if(h.indexOf("応募月")>=0) return "monthly";     // 任意
+  return "unknown";
+}
+
+/* ── 採用費用パース：「7.2〜12万円」→ {lo:7.2, hi:12}（単位:万円）── */
+function parseFee(s){
+  if(!s) return null;
+  var t=String(s);
+  var m=t.match(/([\d.]+)\s*[〜~～\-]\s*([\d.]+)/);
+  if(m) return {lo:parseFloat(m[1]), hi:parseFloat(m[2])};
+  var s1=t.match(/([\d.]+)/);
+  if(s1){ var v=parseFloat(s1[1]); return {lo:v, hi:v}; }
+  return null;
+}
+function feeRange(list){
+  var lo=0, hi=0, k=0;
+  list.forEach(function(r){
+    var f=parseFee(r["採用費用"]); if(f){ lo+=f.lo; hi+=f.hi; k++; }
+  });
+  return {lo:lo, hi:hi, count:k};
+}
+function fmtFee(rg){
+  if(!rg || rg.count===0) return "—";
+  var f=function(x){ return (Math.round(x*10)/10).toLocaleString("ja-JP"); };
+  return (rg.lo===rg.hi ? f(rg.lo) : f(rg.lo)+"〜"+f(rg.hi)) + "万円";
+}
+
+/* ── 月（応募日 2026/06/22 → 2026-06）── */
+function applyMonth(s){
+  if(!s) return "";
+  var m=String(s).match(/(\d{4})[\/\-年](\d{1,2})/);
+  return m ? m[1]+"-"+("0"+m[2]).slice(-2) : "";
+}
+/* ── 日付パースと粒度バケット（月/週/日・曜日つき）── */
+var WD=["日","月","火","水","木","金","土"];
+function _pad2(n){ return ("0"+n).slice(-2); }
+function parseDate(s){
+  if(!s) return null;
+  var m=String(s).match(/(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/);
+  if(!m) return null;
+  var d=new Date(+m[1], +m[2]-1, +m[3]);
+  return isNaN(d.getTime()) ? null : d;
+}
+function isoDate(d){ return d.getFullYear()+"-"+_pad2(d.getMonth()+1)+"-"+_pad2(d.getDate()); }
+function bucketOf(s, gran){
+  // 戻り値 {key(ソート/集計キー), label(軸主), sub(軸副), tableLabel(表の行見出し)}
+  if(gran==="month"){
+    var mo=applyMonth(s);
+    return mo ? {key:mo, label:mo.slice(5), sub:mo.slice(0,4), tableLabel:mo} : null;
+  }
+  var d=parseDate(s);
+  if(!d) return null;
+  if(gran==="week"){
+    var dow=d.getDay(), off=(dow===0?-6:1-dow);  // 週の始まりを月曜に
+    var mon=new Date(d.getFullYear(), d.getMonth(), d.getDate()+off);
+    return {key:isoDate(mon), label:(mon.getMonth()+1)+"/"+mon.getDate(), sub:"週",
+            tableLabel:isoDate(mon)+" 週"};
+  }
+  // day
+  var wd=WD[d.getDay()];
+  return {key:isoDate(d), label:(d.getMonth()+1)+"/"+d.getDate(), sub:"("+wd+")",
+          tableLabel:isoDate(d)+"（"+wd+"）"};
+}
+
+/* ── 集計：軸ごとの件数 [{key,count}]（降順）── */
+function countBy(list, field){
+  var map={};
+  list.forEach(function(r){
+    var v=(r[field]||"").trim() || "(空欄)";
+    map[v]=(map[v]||0)+1;
+  });
+  return Object.keys(map).map(function(k){return {key:k,count:map[k]};})
+    .sort(function(a,b){return b.count-a.count || (a.key<b.key?-1:1);});
+}
+/* 選考状況はステージ順で */
+function countByStage(list){
+  var map={};
+  list.forEach(function(r){ var v=(r["選考状況"]||"").trim()||"(空欄)"; map[v]=(map[v]||0)+1; });
+  var out=[];
+  STAGE_ORDER.forEach(function(s){ if(map[s]){ out.push({key:s,count:map[s]}); delete map[s]; } });
+  Object.keys(map).forEach(function(k){ out.push({key:k,count:map[k]}); });
+  return out;
+}
+/* 月別 × 経路 */
+function monthlyBreakdown(list){
+  var map={};
+  list.forEach(function(r){
+    var mo=applyMonth(r["応募日"]); if(!mo) mo="不明";
+    var route=(r["応募経路"]||ROUTE_NORMAL).trim();
+    if(!map[mo]) map[mo]={scout:0,normal:0};
+    if(route.indexOf("スカウト")>=0) map[mo].scout++; else map[mo].normal++;
+  });
+  var keys=Object.keys(map).filter(function(k){return k!=="不明";}).sort();
+  if(map["不明"]) keys.push("不明");
+  return keys.map(function(k){
+    return {month:k, scout:map[k].scout, normal:map[k].normal, total:map[k].scout+map[k].normal};
+  });
+}
+
+/* ── DOM ヘルパ ── */
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+
+/* =========================================================================
+   レンダリング
+   ========================================================================= */
+function renderAll(){
+  // 新しいデータ読み込み時は表示範囲・選択をリセット
+  SCOPE={}; SCOPE_OPEN=null; SCOPE_SEARCH=""; PIPE_HIDDEN={}; APP_INCLUDE_FINISHED=true; TREND_MODE="route"; TREND_GRAN="month"; JOB_HIDDEN={};
+  var cf=el("chkFinished"); if(cf) cf.checked=true;
+  var tgr=el("trendGran"); if(tgr) tgr.querySelectorAll(".seg-btn").forEach(function(x){
+    x.setAttribute("aria-selected", x.getAttribute("data-gran")==="month"?"true":"false"); });
+  var tg=el("trendToggle"); if(tg) tg.querySelectorAll(".seg-btn").forEach(function(x){
+    x.setAttribute("aria-selected", x.getAttribute("data-mode")==="route"?"true":"false"); });
+  var ft=el("finishedToggle"); if(ft) ft.classList.remove("off");
+  annotateArea();
+  el("loader").classList.add("hidden");
+  el("tabs").hidden=false; el("datestamp").hidden=false;
+  el("scopeBar").hidden=false;
+  el("btnReload").hidden=false; el("footer").hidden=false;
+  el("dataDate").textContent = STATE.dataDate || "—";
+  buildScopeBar();
+  buildReference();
+  renderScoped();
+  if(!document.querySelector(".view.active")) showTab("dashboard");
+}
+/* スコープ変更時に全ビューを再描画 */
+function renderScoped(){
+  renderDashboard();
+  renderSummary();
+  buildFilters();
+  applyFilter();
+  renderTrend();
+}
+
+/* グローバル表示範囲：エリア ＞ 法人 ＞ 事業所 の階層ドリルダウン */
+function buildScopeBar(){
+  var box=el("scopeFields"); clear(box);
+  var fields=scopeFieldsPresent();
+  // 各段の選択可能値（上位選択で絞る）を計算
+  function optionsFor(idx){
+    var f=fields[idx];
+    var ancestors=fields.slice(0,idx).map(function(x){return x.key;});
+    var base=STATE.applicants.filter(function(r){
+      for(var i=0;i<ancestors.length;i++){
+        var k=ancestors[i], sel=SCOPE[k];
+        if(sel && sel.length && sel.indexOf((r[k]||"").trim())<0) return false;
+      }
+      return true;
+    });
+    var vals={};
+    base.forEach(function(r){ var v=(r[f.key]||"").trim(); if(v) vals[v]=1; });
+    var opts=Object.keys(vals);
+    if(f.key==="エリア"){
+      opts.sort(function(a,b){
+        var ia=(a in PREF_INDEX)?PREF_INDEX[a]:(a===AREA_UNKNOWN?999:998);
+        var ib=(b in PREF_INDEX)?PREF_INDEX[b]:(b===AREA_UNKNOWN?999:998);
+        return ia-ib;
+      });
+    } else opts.sort();
+    return {vals:vals, opts:opts};
+  }
+  // 選択済みのうち現在の選択肢に無いものを掃除
+  fields.forEach(function(f,idx){
+    if(!SCOPE[f.key]) return;
+    var o=optionsFor(idx);
+    SCOPE[f.key]=SCOPE[f.key].filter(function(v){return o.vals[v];});
+    if(!SCOPE[f.key].length) delete SCOPE[f.key];
+  });
+
+  // 表示する段（エリアはhasAreaなら常に、法人/事業所は候補2件以上 or 選択中）
+  var shown=[];
+  fields.forEach(function(f,idx){
+    var o=optionsFor(idx);
+    var show=(f.key==="エリア")||o.opts.length>=2||(SCOPE[f.key]&&SCOPE[f.key].length);
+    if(show) shown.push({f:f, idx:idx, opts:o.opts});
+  });
+  if(SCOPE_OPEN && !shown.some(function(x){return x.f.key===SCOPE_OPEN;})) SCOPE_OPEN=null;
+
+  if(!shown.length){
+    var corp=(STATE.applicants[0]||{})["法人名"]||"";
+    box.innerHTML='<span class="muted" style="font-size:12px">この範囲（'+esc(corp)+
+      '）の全データを表示しています。'+
+      (STATE.hasArea?'':'エリア（都道府県）で絞り込むには、エリアマスタ（area_master.csv）も一緒に読み込んでください。')+
+      '</span>';
+    return;
+  }
+
+  // ── ボタン行（常時1行・コンパクト）──
+  var btnRow=document.createElement("div"); btnRow.className="scope-buttons";
+  shown.forEach(function(x){
+    var sel=SCOPE[x.f.key]||[];
+    var summary = sel.length===0 ? "すべて"
+                : (sel.length===1 ? (sel[0].length>12?sel[0].slice(0,12)+"…":sel[0])
+                : sel.length+"件");
+    var b=document.createElement("button");
+    b.className="scope-btn"+(SCOPE_OPEN===x.f.key?" open":"")+(sel.length?" has-sel":"");
+    b.innerHTML=esc(x.f.label)+'<span class="sb-cnt">'+esc(summary)+'</span><span class="sb-car">▾</span>';
+    b.addEventListener("click", function(){
+      SCOPE_OPEN = (SCOPE_OPEN===x.f.key) ? null : x.f.key;
+      SCOPE_SEARCH="";
+      buildScopeBar();
+    });
+    btnRow.appendChild(b);
+  });
+  box.appendChild(btnRow);
+
+  // ── 開いている段のパネル（チップ選択・複数可）──
+  if(SCOPE_OPEN){
+    var cur=shown.filter(function(x){return x.f.key===SCOPE_OPEN;})[0];
+    var panel=document.createElement("div"); panel.className="scope-panel";
+    var opts=cur.opts;
+    var many=opts.length>14;
+    if(many){
+      var search=document.createElement("input");
+      search.className="sp-search"; search.type="text";
+      search.placeholder="絞り込み検索（例：施設名の一部）";
+      search.value=SCOPE_SEARCH;
+      search.addEventListener("input", function(){ SCOPE_SEARCH=search.value; renderChips(); });
+      panel.appendChild(search);
+    }
+    var chipWrap=document.createElement("div"); chipWrap.className="sp-chips";
+    panel.appendChild(chipWrap);
+    box.appendChild(panel);
+    if(many){ // フォーカスを検索に
+      setTimeout(function(){ var i=panel.querySelector(".sp-search"); if(i) i.focus(); },0);
+    }
+    renderChips();
+
+    function renderChips(){
+      clear(chipWrap);
+      var sel=SCOPE[cur.f.key]||[];
+      // すべて
+      var all=document.createElement("button");
+      all.className="chip chip-all"; all.textContent="すべて";
+      all.setAttribute("aria-pressed", sel.length?"false":"true");
+      all.addEventListener("click", function(){
+        delete SCOPE[cur.f.key];
+        clearDescendants(cur.idx);
+        buildScopeBar(); renderScoped();
+      });
+      chipWrap.appendChild(all);
+      var q=SCOPE_SEARCH.trim().toLowerCase();
+      var list=opts.filter(function(o){ return !q || o.toLowerCase().indexOf(q)>=0; });
+      if(!list.length){
+        var e=document.createElement("span"); e.className="sp-empty";
+        e.textContent="該当なし"; chipWrap.appendChild(e); return;
+      }
+      list.forEach(function(o){
+        var on=sel.indexOf(o)>=0;
+        var c=document.createElement("button");
+        c.className="chip"; c.textContent=o; c.setAttribute("aria-pressed", on?"true":"false");
+        c.addEventListener("click", function(){
+          if(!SCOPE[cur.f.key]) SCOPE[cur.f.key]=[];
+          var i=SCOPE[cur.f.key].indexOf(o);
+          if(i>=0) SCOPE[cur.f.key].splice(i,1); else SCOPE[cur.f.key].push(o);
+          if(!SCOPE[cur.f.key].length) delete SCOPE[cur.f.key];
+          clearDescendants(cur.idx);
+          renderScoped();
+          // ボタン要約と自段チップだけ更新（パネルは開いたまま）
+          updateButtonSummaries(); renderChips();
+        });
+        chipWrap.appendChild(c);
+      });
+    }
+    function clearDescendants(idx){
+      fields.forEach(function(x,j){ if(j>idx) delete SCOPE[x.key]; });
+    }
+    function updateButtonSummaries(){
+      var btns=btnRow.querySelectorAll(".scope-btn");
+      shown.forEach(function(x,i){
+        var sel=SCOPE[x.f.key]||[];
+        var summary = sel.length===0 ? "すべて"
+                    : (sel.length===1 ? (sel[0].length>12?sel[0].slice(0,12)+"…":sel[0])
+                    : sel.length+"件");
+        var b=btns[i]; if(!b) return;
+        b.className="scope-btn"+(SCOPE_OPEN===x.f.key?" open":"")+(sel.length?" has-sel":"");
+        b.innerHTML=esc(x.f.label)+'<span class="sb-cnt">'+esc(summary)+'</span><span class="sb-car">▾</span>';
+      });
+    }
+  }
+
+  if(!STATE.hasArea){
+    var hint=document.createElement("div");
+    hint.className="muted"; hint.style.fontSize="11px"; hint.style.marginTop="6px";
+    hint.textContent="※エリア（都道府県）を出すには area_master.csv も読み込んでください";
+    box.appendChild(hint);
+  }
+}
+
+/* 選考状況の意味リファレンス（PDF準拠） */
+function buildReference(){
+  var p=el("refPanel"); if(!p) return;
+  var order=STAGE_ORDER;
+  p.innerHTML='<div class="ref-grid">'+order.map(function(s){
+    var col=STAGE_COLOR[s]||"#94a0b3", grp=stageGroup(s);
+    return '<div class="ref-item"><div class="ri-name"><span class="dot" style="background:'+col+'"></span>'+
+      esc(s)+' <span class="group-tag '+(grp==="選考中"?"active":"closed")+'">'+grp+'</span></div>'+
+      '<div class="ri-mean">'+esc(STAGE_MEANING[s]||"")+'</div></div>';
+  }).join("")+'</div>';
+}
+
+/* ① ダッシュボード */
+function renderDashboard(){
+  var d=scopedDashboard();
+  var kp=el("dashKpis"), tb=el("dashTable");
+  clear(kp); clear(tb);
+  if(!d.length){
+    el("dashEmpty").classList.remove("hidden");
+    var a=scopedApplicants();
+    kp.innerHTML = kpiCard("総応募者数", a.length, "accent", "screening_applicants")
+      + kpiCard("選考中", a.filter(function(r){return r["選考区分"]==="選考中";}).length,"")
+      + kpiCard("選考済み", a.filter(function(r){return r["選考区分"]==="選考済み";}).length,"")
+      + kpiCard("スカウト経由", a.filter(function(r){return (r["応募経路"]||"").indexOf("スカウト")>=0;}).length,"sakura");
+    return;
+  }
+  el("dashEmpty").classList.add("hidden");
+  var sum=function(f){ return d.reduce(function(s,r){return s+(parseInt(r[f],10)||0);},0); };
+  kp.innerHTML = kpiCard("未確認の応募", sum("未確認の応募"), "accent")
+    + kpiCard("未読メッセージ", sum("未読メッセージ"), "")
+    + kpiCard("募集中の施設", sum("募集中の施設"), "")
+    + kpiCard("募集中の求人", sum("募集中の求人"), "");
+  // 表：数値4列は中央寄せ・拡大。未確認の応募/未読メッセージは0以外でセル強調。
+  var numCols=["未確認の応募","未読メッセージ","募集中の施設","募集中の求人"];
+  var alertCols={"未確認の応募":1,"未読メッセージ":1};
+  var cols=["法人名","ログインID"].concat(numCols);
+  var html="<thead><tr>"+cols.map(function(c){
+    var isNum=numCols.indexOf(c)>=0;
+    return "<th"+(isNum?' class="center"':"")+">"+esc(c)+"</th>";}).join("")+"</tr></thead><tbody>";
+  d.forEach(function(r){
+    html+="<tr>"+cols.map(function(c){
+      var v=r[c]||"";
+      if(numCols.indexOf(c)>=0){
+        var n=parseInt(v,10)||0;
+        var cls="bignum"+(alertCols[c] && n>0 ? " alert":"");
+        return '<td class="'+cls+'">'+esc(v)+'</td>';
+      }
+      return "<td>"+esc(v)+"</td>";
+    }).join("")+"</tr>";
+  });
+  html+="</tbody>";
+  tb.innerHTML=html;
+}
+function kpiCard(label,val,cls,sub){
+  return '<div class="card kpi"><div class="k-lbl">'+esc(label)+'</div>'+
+    '<div class="k-val '+(cls||"")+'">'+Number(val).toLocaleString("ja-JP")+'</div>'+
+    (sub?'<div class="k-sub">'+esc(sub)+'</div>':'')+'</div>';
+}
+
+/* ② 選考サマリー */
+function renderSummary(){
+  var a=scopedApplicants(), total=a.length;
+  el("pipeTotal").textContent = "総応募者 "+total+" 件";
+  var allStages=countByStage(a);
+  renderPipeControls(allStages);
+  drawPipeline(allStages);
+  // 経路（件数＋％）/ 区分 / 施設 / 求人
+  renderBars("barsRoute", countBy(a,"応募経路"), total, routeColor, null, true);
+  renderBars("barsKubun", countBy(a,"選考区分"), total, function(k){
+    return k==="選考中" ? "#0e7490" : "#7d8aa0"; }, null, true);
+  renderBars("barsFacility", countBy(a,"施設名"), total, function(){return "#2f6f8f";}, 12);
+  renderBars("barsJob", countBy(a,"求人名"), total, function(){return "#4a8b9c";}, 12);
+}
+/* パイプラインのステージ選択チップ */
+function renderPipeControls(stages){
+  var box=el("pipeControls"); if(!box) return; clear(box);
+  stages.forEach(function(s){
+    var col=STAGE_COLOR[s.key]||"#94a0b3", off=!!PIPE_HIDDEN[s.key];
+    var chip=document.createElement("label");
+    chip.className="stage-chk"+(off?" off":"");
+    chip.innerHTML='<input type="checkbox" '+(off?"":"checked")+'>'+
+      '<span class="sc-dot" style="background:'+col+'"></span>'+esc(s.key)+
+      ' <b style="font-variant-numeric:tabular-nums">'+s.count+'</b>';
+    chip.querySelector("input").addEventListener("change", function(e){
+      if(e.target.checked) delete PIPE_HIDDEN[s.key]; else PIPE_HIDDEN[s.key]=true;
+      var all=countByStage(scopedApplicants());
+      renderPipeControls(all); drawPipeline(all);
+    });
+    box.appendChild(chip);
+  });
+}
+function drawPipeline(stages){
+  var shown=stages.filter(function(s){ return !PIPE_HIDDEN[s.key]; });
+  var pipe=el("pipeline"), leg=el("pipeLegend");
+  clear(pipe); clear(leg);
+  var shownTotal=shown.reduce(function(s,x){return s+x.count;},0);
+  shown.forEach(function(s){
+    var col=STAGE_COLOR[s.key]||"#94a0b3";
+    var seg=document.createElement("div");
+    seg.className="seg"; seg.style.background=col;
+    seg.style.flexGrow=s.count; seg.style.flexBasis="0";
+    var pct=shownTotal?Math.round(s.count/shownTotal*100):0;
+    seg.title=s.key+"："+(STAGE_MEANING[s.key]||"")+" / "+s.count+"件（"+pct+"%）";
+    seg.innerHTML='<span class="sg-n">'+s.count+'</span><span class="sg-l">'+esc(s.key)+'</span>';
+    pipe.appendChild(seg);
+    var lg=document.createElement("div"); lg.className="lg";
+    lg.title=STAGE_MEANING[s.key]||"";
+    lg.innerHTML='<span class="dot" style="background:'+col+'"></span>'+esc(s.key)+
+      ' <b>'+s.count+'</b> <span class="bar-pct">'+pct+'%</span>';
+    leg.appendChild(lg);
+  });
+  // 選考中/選考済みの小計
+  var act=shown.filter(function(s){return stageGroup(s.key)==="選考中";})
+            .reduce(function(s,x){return s+x.count;},0);
+  var clo=shownTotal-act;
+  el("pipeSubtotal").innerHTML='<span class="group-tag active">選考中</span><b>'+act+'</b> 件 ／ '+
+    '<span class="group-tag closed">選考済み</span><b>'+clo+'</b> 件 ／ 表示合計 <b>'+shownTotal+'</b> 件';
+}
+function routeColor(k){ return (k||"").indexOf("スカウト")>=0 ? "var(--sakura)" : "var(--primary)"; }
+function renderBars(id, data, total, colorFn, limit, showPct){
+  var box=el(id); clear(box);
+  var max=data.reduce(function(m,d){return Math.max(m,d.count);},0)||1;
+  var sumAll=data.reduce(function(s,d){return s+d.count;},0)||1;
+  var list = limit ? data.slice(0,limit) : data;
+  list.forEach(function(d){
+    var row=document.createElement("div"); row.className="bar-row";
+    var pct=Math.round(d.count/max*100);
+    var share=Math.round(d.count/sumAll*1000)/10;
+    var ntxt = showPct ? d.count+'<span class="bar-pct">'+share+'%</span>' : String(d.count);
+    row.innerHTML='<div class="bl" title="'+esc(d.key)+'">'+esc(d.key)+'</div>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+
+        colorFn(d.key)+'"></div></div>'+
+      '<div class="bn">'+ntxt+'</div>';
+    box.appendChild(row);
+  });
+  if(limit && data.length>limit){
+    var more=document.createElement("div");
+    more.className="muted"; more.style.fontSize="12px"; more.style.marginTop="4px";
+    more.textContent="ほか "+(data.length-limit)+" 件";
+    box.appendChild(more);
+  }
+}
+
+/* ③ 応募者一覧 ── フィルタ */
+var FILTER_FIELDS=[
+  {key:"選考区分",label:"選考区分"},
+  {key:"選考状況",label:"選考状況"},
+  {key:"応募経路",label:"応募経路"},
+  {key:"求人名",label:"求人（職種）"},
+  {key:"雇用形態",label:"雇用形態"}
+];
+/* 応募者一覧のベース集合：グローバルスコープ＋「選考終了を含める」トグルを反映 */
+function applicantBase(){
+  return scopedApplicants().filter(function(r){
+    if(!APP_INCLUDE_FINISHED && (r["選考状況"]||"").trim()==="選考終了") return false;
+    return true;
+  });
+}
+function buildFilters(){
+  var box=el("filters"); clear(box);
+  var base=applicantBase();
+  // テキスト検索
+  var prev = el("fSearch") ? el("fSearch").value : "";
+  var search=document.createElement("div");
+  search.className="ffield";
+  search.innerHTML='<label>会員番号で検索</label><input type="text" id="fSearch" placeholder="会員番号">';
+  box.appendChild(search);
+  FILTER_FIELDS.forEach(function(f){
+    var vals={};
+    base.forEach(function(r){ var v=(r[f.key]||"").trim(); if(v) vals[v]=1; });
+    var opts=Object.keys(vals).sort();
+    if(f.key==="選考状況"){
+      opts.sort(function(a,b){
+        var ia=STAGE_ORDER.indexOf(a), ib=STAGE_ORDER.indexOf(b);
+        if(ia<0)ia=99; if(ib<0)ib=99; return ia-ib || (a<b?-1:1);
+      });
+    }
+    var d=document.createElement("div"); d.className="ffield";
+    d.innerHTML='<label>'+esc(f.label)+'</label><select data-field="'+f.key+'"><option value="">すべて</option>'+
+      opts.map(function(o){return '<option value="'+esc(o)+'">'+esc(o)+'</option>';}).join("")+'</select>';
+    box.appendChild(d);
+  });
+  box.querySelectorAll("select").forEach(function(s){ s.addEventListener("change", applyFilter); });
+  var fs=el("fSearch"); fs.value=prev; fs.addEventListener("input", applyFilter);
+}
+function currentFilter(){
+  var f={selects:{}, q:""};
+  el("filters").querySelectorAll("select").forEach(function(s){
+    if(s.value) f.selects[s.getAttribute("data-field")]=s.value;
+  });
+  var q=el("fSearch"); f.q = q ? q.value.trim() : "";
+  return f;
+}
+function applyFilter(){
+  var f=currentFilter();
+  var rows=applicantBase().filter(function(r){
+    for(var k in f.selects){ if((r[k]||"").trim()!==f.selects[k]) return false; }
+    if(f.q){
+      var hay=(r["会員番号"]||"");
+      if(hay.indexOf(f.q)<0) return false;
+    }
+    return true;
+  });
+  el("fCount").textContent = rows.length;
+  var rg=feeRange(rows);
+  el("fFee").textContent = " ・ 採用費用レンジ合計 "+fmtFee(rg)+"（"+rg.count+"件）";
+  var sc=rows.filter(function(r){return (r["応募経路"]||"").indexOf("スカウト")>=0;}).length;
+  el("fRoute").textContent = " ・ スカウト経由 "+sc+" / 通常 "+(rows.length-sc);
+  renderFilteredSummary(rows);
+  renderAppTable(rows);
+}
+function renderFilteredSummary(rows){
+  var box=el("filteredSummary"); clear(box);
+  if(!rows.length){ box.innerHTML='<div class="card card-pad muted">該当する応募者がいません。絞り込み条件を変更してください。</div>'; return; }
+  var total=rows.length;
+  function mini(title, data, colorFn){
+    var max=data.reduce(function(m,d){return Math.max(m,d.count);},0)||1;
+    var inner=data.slice(0,8).map(function(d){
+      var pct=Math.round(d.count/max*100);
+      return '<div class="bar-row"><div class="bl" title="'+esc(d.key)+'">'+esc(d.key)+'</div>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+colorFn(d.key)+'"></div></div>'+
+        '<div class="bn">'+d.count+'</div></div>';
+    }).join("");
+    return '<div class="card card-pad"><h3 style="margin-bottom:12px">'+title+
+      ' <span class="h3sub">該当 '+total+' 件</span></h3><div class="bars">'+inner+'</div></div>';
+  }
+  box.innerHTML =
+    mini("選考状況", countByStage(rows), function(k){return STAGE_COLOR[k]||"#94a0b3";}) +
+    mini("施設別", countBy(rows,"施設名"), function(){return "#2f6f8f";});
+}
+function renderAppTable(rows){
+  var cols=[
+    {k:"選考区分",c:""},{k:"選考状況",c:""},{k:"応募経路",c:""},
+    {k:"会員番号",c:""},{k:"性別",c:""},{k:"年齢",c:"n"},
+    {k:"施設名",c:""},{k:"求人名",c:""},{k:"雇用形態",c:""},{k:"採用費用",c:""},
+    {k:"応募日",c:"nowrap"},{k:"更新日",c:"nowrap"},{k:"面接予定日",c:"nowrap"},
+    {k:"保有資格",c:""},{k:"メモ",c:""}
+  ];
+  // ソート
+  var sorted=rows.slice().sort(function(a,b){
+    var ka=a[SORT.key]||"", kb=b[SORT.key]||"";
+    if(SORT.key==="年齢"){ ka=parseInt(ka,10)||0; kb=parseInt(kb,10)||0; return (ka-kb)*SORT.dir; }
+    return (ka<kb?-1:ka>kb?1:0)*SORT.dir;
+  });
+  var tb=el("appTable");
+  var head="<thead><tr>"+cols.map(function(col){
+    var arrow = SORT.key===col.k ? ' <span class="arrow">'+(SORT.dir>0?"▲":"▼")+'</span>' : "";
+    return '<th class="sortable '+col.c+'" data-sort="'+col.k+'">'+esc(col.k)+arrow+'</th>';
+  }).join("")+"</tr></thead>";
+  var body="<tbody>";
+  sorted.forEach(function(r){
+    body+="<tr>"+cols.map(function(col){
+      var v=r[col.k]||"";
+      if(col.k==="応募経路"){
+        var sc=v.indexOf("スカウト")>=0;
+        return '<td><span class="pill '+(sc?"route-scout":"route-normal")+'">'+esc(v||ROUTE_NORMAL)+'</span></td>';
+      }
+      if(col.k==="選考区分"){ return '<td><span class="pill kubun">'+esc(v)+'</span></td>'; }
+      if(col.k==="採用費用"){ return '<td class="nowrap">'+esc(v)+'</td>'; }
+      return '<td class="'+col.c+'">'+esc(v)+'</td>';
+    }).join("")+"</tr>";
+  });
+  body+="</tbody>";
+  tb.innerHTML=head+body;
+  tb.querySelectorAll("th.sortable").forEach(function(th){
+    th.addEventListener("click", function(){
+      var k=th.getAttribute("data-sort");
+      if(SORT.key===k) SORT.dir*=-1; else { SORT.key=k; SORT.dir=1; }
+      applyFilter();
+    });
+  });
+}
+
+/* ④ 月別推移（自前 SVG 積み上げ棒）*/
+/* 月別×カテゴリ（応募ルート別 or 職種別）の積み上げデータを作る */
+function monthlyStacks(apps, mode){
+  var cats, catOf;
+  if(mode==="job"){
+    // 非表示にした職種を除外して集計
+    var visible=apps.filter(function(r){ var v=(r["求人名"]||"").trim()||"(空欄)"; return !JOB_HIDDEN[v]; });
+    var counts=countBy(visible,"求人名");          // 多い順
+    var TOP=8;
+    var topSet={}; counts.slice(0,TOP).forEach(function(c){ topSet[c.key]=1; });
+    var hasOther=counts.length>TOP;
+    cats=counts.slice(0,TOP).map(function(c){return c.key;});
+    if(hasOther) cats.push("その他");
+    catOf=function(r){ var v=(r["求人名"]||"").trim()||"(空欄)"; return topSet[v]?v:(hasOther?"その他":v); };
+    var catColorList={}; cats.forEach(function(k,i){ catColorList[k]= k==="その他" ? "#aab2c0" : JOB_PALETTE[i%JOB_PALETTE.length]; });
+    var catColor=function(k){ return catColorList[k]||"#94a0b3"; };
+    return _buildStacks(visible, cats, catOf, catColor);
+  }
+  // route
+  cats=[ROUTE_SCOUT, ROUTE_NORMAL];
+  catOf=function(r){ return (r["応募経路"]||"").indexOf("スカウト")>=0 ? ROUTE_SCOUT : ROUTE_NORMAL; };
+  var rc=function(k){ return k===ROUTE_SCOUT ? "#d36a82" : "#0e7490"; };
+  return _buildStacks(apps, cats, catOf, rc);
+}
+/* 職種ピッカー（職種別で表示する職種を選択。非表示はトレンドから除外）*/
+function renderJobPicker(apps){
+  var wrap=el("jobPicker"); if(!wrap) return;
+  if(TREND_MODE!=="job"){ wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  var box=el("jobChips"); clear(box);
+  var counts=countBy(apps,"求人名");   // スコープ後の全職種（多い順）
+  var anyHidden=Object.keys(JOB_HIDDEN).length>0;
+  var all=document.createElement("button");
+  all.className="chip chip-all"; all.textContent="すべて";
+  all.setAttribute("aria-pressed", anyHidden?"false":"true");
+  all.addEventListener("click", function(){ JOB_HIDDEN={}; renderTrend(); });
+  box.appendChild(all);
+  counts.forEach(function(c){
+    var on=!JOB_HIDDEN[c.key];
+    var b=document.createElement("button");
+    b.className="chip"; b.setAttribute("aria-pressed", on?"true":"false");
+    b.textContent=c.key+"（"+c.count+"）";
+    b.addEventListener("click", function(){
+      if(JOB_HIDDEN[c.key]) delete JOB_HIDDEN[c.key]; else JOB_HIDDEN[c.key]=true;
+      renderTrend();
+    });
+    box.appendChild(b);
+  });
+}
+function _buildStacks(apps, cats, catOf, catColor){
+  var gran=TREND_GRAN;
+  var buckets={};        // key -> {meta, counts:{cat:n}}
+  apps.forEach(function(r){
+    var b=bucketOf(r["応募日"], gran);
+    var key = b ? b.key : "不明";
+    var meta = b || {key:"不明", label:"不明", sub:"", tableLabel:"不明"};
+    var cat=catOf(r);
+    if(!buckets[key]) buckets[key]={meta:meta, counts:{}};
+    buckets[key].counts[cat]=(buckets[key].counts[cat]||0)+1;
+  });
+  var keys=Object.keys(buckets).filter(function(k){return k!=="不明";}).sort();
+  if(buckets["不明"]) keys.push("不明");
+  var catList=cats.map(function(k){ return {key:k, color:catColor(k)}; });
+  return {keys:keys, buckets:buckets, cats:catList};
+}
+
+function renderTrend(){
+  var apps=scopedApplicants();
+  renderJobPicker(apps);
+  var st=monthlyStacks(apps, TREND_MODE);
+  var host=el("trendChart"); clear(host);
+  if(!st.keys.length){ host.innerHTML='<div class="muted">応募日のデータがありません。</div>'; return; }
+
+  var data=st.keys.map(function(key){
+    var b=st.buckets[key];
+    var row={meta:b.meta, total:0, parts:[]};
+    st.cats.forEach(function(c){ var n=b.counts[c.key]||0; row.total+=n; row.parts.push({key:c.key,color:c.color,n:n}); });
+    return row;
+  });
+  // 粒度ごとに棒の太さ・間隔を調整（日別は細く）
+  var per = TREND_GRAN==="day" ? 26 : (TREND_GRAN==="week" ? 34 : 64);
+  var pad={t:18,r:44,b:48,l:46};   // 右にも縦軸メモリを置くため右余白を確保
+  var iw0=data.length*per, W=Math.max(560, iw0+pad.l+pad.r), H=320;
+  var iw=W-pad.l-pad.r, ih=H-pad.t-pad.b;
+  var max=data.reduce(function(m,d){return Math.max(m,d.total);},0)||1;
+  var step=niceStep(max), top=Math.ceil(max/step)*step;
+  var gap=iw/data.length, bw=Math.min(per*0.64, gap*0.7);
+  var labelEvery = data.length>40 ? Math.ceil(data.length/40) : 1;
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" role="img" aria-label="応募数の推移">';
+  for(var g=0; g<=top+0.0001; g+=step){
+    var y=pad.t+ih-(g/top)*ih;
+    svg+='<line class="grid-line" x1="'+pad.l+'" y1="'+y+'" x2="'+(pad.l+iw)+'" y2="'+y+'"/>';
+    // 縦軸メモリ：左
+    svg+='<text x="'+(pad.l-8)+'" y="'+(y+4)+'" text-anchor="end" font-size="11">'+g+'</text>';
+    // 縦軸メモリ：右（横スクロールで最新を見ているときも値が読める）
+    svg+='<text x="'+(pad.l+iw+8)+'" y="'+(y+4)+'" text-anchor="start" font-size="11">'+g+'</text>';
+  }
+  svg+='<line class="axis-line" x1="'+pad.l+'" y1="'+(pad.t+ih)+'" x2="'+(pad.l+iw)+'" y2="'+(pad.t+ih)+'"/>';
+  data.forEach(function(d,i){
+    var cx=pad.l+gap*i+gap/2, x=cx-bw/2;
+    var yCursor=pad.t+ih;
+    d.parts.forEach(function(p){
+      if(p.n<=0) return;
+      var h=(p.n/top)*ih; yCursor-=h;
+      svg+='<rect class="bar-seg" x="'+x+'" y="'+yCursor+'" width="'+bw+'" height="'+h+'" rx="1.5" fill="'+p.color+'"><title>'+esc(d.meta.tableLabel)+' '+esc(p.key)+' '+p.n+'</title></rect>';
+    });
+    if(d.total>0 && labelEvery===1) svg+='<text x="'+cx+'" y="'+(yCursor-6)+'" text-anchor="middle" font-size="10.5" fill="#1b2230" font-weight="600">'+d.total+'</text>';
+    if(i % labelEvery === 0 || i===data.length-1){
+      svg+='<text x="'+cx+'" y="'+(pad.t+ih+18)+'" text-anchor="middle" font-size="11" fill="#1b2230">'+esc(d.meta.label)+'</text>';
+      if(d.meta.sub) svg+='<text x="'+cx+'" y="'+(pad.t+ih+32)+'" text-anchor="middle" font-size="9.5" fill="#8a93a6">'+esc(d.meta.sub)+'</text>';
+    }
+  });
+  svg+='</svg>';
+  svg+='<div class="trend-legend">'+st.cats.map(function(c){
+    return '<span class="lg"><span class="dot" style="background:'+c.color+'"></span>'+esc(c.key)+'</span>';
+  }).join("")+'</div>';
+  // 棒の要素についての説明
+  var granLbl = TREND_GRAN==="day" ? "日" : (TREND_GRAN==="week" ? "週" : "月");
+  var splitLbl = TREND_MODE==="job" ? "職種（求人）" : "応募経路（スカウト経由／通常）";
+  svg+='<div class="trend-caption">グラフの見方：横軸は'+granLbl+'（左→右で古い→新しい）。'+
+    '1本の棒＝その'+granLbl+'の応募数を <b>'+esc(splitLbl)+'</b> ごとに色分けして積み上げたものです。'+
+    '棒の上の数字は'+granLbl+'の合計件数、縦軸の目盛り（左右）は応募件数を表します。色の対応は上の凡例のとおりです。</div>';
+  host.innerHTML=svg;
+  var wrap=host.parentNode;
+  if(wrap && wrap.classList.contains("chart-wrap")){ wrap.scrollLeft=wrap.scrollWidth; }
+
+  // 内訳テーブル（最新→過去・数値拡大中央寄せ）
+  var granLabel = TREND_GRAN==="day" ? "日別" : (TREND_GRAN==="week" ? "週別" : "月別");
+  var periodCol = TREND_GRAN==="day" ? "応募日（曜日）" : (TREND_GRAN==="week" ? "週（開始日）" : "応募月");
+  el("trendTableTitle").textContent = granLabel+"の内訳（"+(TREND_MODE==="job"?"職種別":"応募ルート別")+"）";
+  var tt=el("trendTable");
+  var catTotals={}; st.cats.forEach(function(c){ catTotals[c.key]=0; });
+  var th="<thead><tr><th>"+esc(periodCol)+"</th>"+st.cats.map(function(c){return "<th class='tnum-h'>"+esc(c.key)+"</th>";}).join("")+"<th class='tnum-h'>合計</th></tr></thead><tbody>";
+  var desc=data.slice().reverse();
+  desc.forEach(function(d){
+    th+="<tr><td class='nowrap'>"+esc(d.meta.tableLabel)+"</td>"+
+      d.parts.map(function(p){ catTotals[p.key]+=p.n; return "<td class='tnum'>"+p.n+"</td>"; }).join("")+
+      "<td class='tnum'>"+d.total+"</td></tr>";
+  });
+  var grand=0; st.cats.forEach(function(c){ grand+=catTotals[c.key]; });
+  th+="<tr style='font-weight:700;background:var(--surface-2)'><td>合計</td>"+
+    st.cats.map(function(c){return "<td class='tnum'>"+catTotals[c.key]+"</td>";}).join("")+
+    "<td class='tnum'>"+grand+"</td></tr>";
+  th+="</tbody>";
+  tt.innerHTML=th;
+}
+function niceStep(max){
+  // max を約5分割する「きりのいい整数の刻み」を返す（カウント向け）。
+  var cands=[1,2,5,10,20,25,50,100,200,250,500,1000,2000];
+  for(var i=0;i<cands.length;i++){ if(max/cands[i] <= 5.5) return cands[i]; }
+  return cands[cands.length-1];
+}
+
+/* ── タブ切替 ── */
+function showTab(name){
+  document.querySelectorAll(".tab").forEach(function(t){
+    t.setAttribute("aria-selected", t.getAttribute("data-tab")===name ? "true":"false");
+  });
+  document.querySelectorAll(".view").forEach(function(v){
+    v.classList.toggle("active", v.id==="view-"+name);
+  });
+  // 月別推移は表示時に最新（右端）へスクロール（非表示中は幅が0のため）
+  if(name==="trend"){
+    var host=el("trendChart"); var wrap=host && host.parentNode;
+    if(wrap && wrap.classList && wrap.classList.contains("chart-wrap")){
+      wrap.scrollLeft=wrap.scrollWidth;
+    }
+  }
+}
+
+/* =========================================================================
+   ファイル読み込み
+   ========================================================================= */
+function ingest(files){
+  var arr=Array.prototype.slice.call(files).filter(function(f){return /\.csv$/i.test(f.name);});
+  if(!arr.length){ showFiles([{name:"CSVファイルが選択されていません", ok:false}]); return; }
+  var done=0, report=[], pendingApplicants=[], facilityRows=[];
+  arr.forEach(function(file){
+    var rd=new FileReader();
+    rd.onload=function(){
+      var parsed=parseCSV(String(rd.result||""));
+      var kind=classify(parsed.headers);
+      if(kind==="applicants"){ pendingApplicants.push(parsed.rows); report.push({name:file.name+"（応募者 "+parsed.rows.length+"件）",ok:true}); }
+      else if(kind==="dashboard"){ STATE.dashboard=parsed.rows; report.push({name:file.name+"（ダッシュボード "+parsed.rows.length+"行）",ok:true}); }
+      else if(kind==="facility"){
+        facilityRows=facilityRows.concat(parsed.rows);
+        var resolved=buildAreaMap(parsed.rows);
+        report.push({name:file.name+"（施設 "+parsed.rows.length+"件／エリア判定 "+resolved+"件）",ok:true});
+      }
+      else if(kind==="summary"||kind==="monthly"){ report.push({name:file.name+"（応募者データから再集計するため未使用）",ok:true}); }
+      else report.push({name:file.name+"（形式を判定できませんでした）",ok:false});
+      done++;
+      if(done===arr.length){ finalizeIngest(pendingApplicants, report); }
+    };
+    rd.onerror=function(){ report.push({name:file.name+"（読み込みエラー）",ok:false}); done++;
+      if(done===arr.length){ finalizeIngest(pendingApplicants, report); } };
+    rd.readAsText(file,"utf-8");
+  });
+}
+/* 施設・求人CSV → 施設名:都道府県 の対応表を作る（既存に追記）*/
+function buildAreaMap(rows){
+  var resolved=0;
+  rows.forEach(function(r){
+    var name=(r["施設名"]||"").trim();
+    var corp=(r["法人名"]||"").trim();
+    // 「エリア」列があれば優先（編集済みマスタ）、無ければ所在地から抽出
+    var pref=(r["エリア"]||"").trim() || extractPref(r["所在地"]||r["所在地_参照"]||"");
+    if(name && pref){
+      STATE.areaMap[name]=pref;
+      if(corp) STATE.areaMapByCorp[corp+"\u0001"+name]=pref;
+      resolved++;
+    }
+  });
+  if(Object.keys(STATE.areaMap).length) STATE.hasArea=true;
+  return resolved;
+}
+function finalizeIngest(applicantSets, report){
+  showFiles(report);
+  if(applicantSets.length){
+    // 複数の applicants CSV があれば「取得日時」が最新のものを採用
+    var best=null, bestDate="";
+    applicantSets.forEach(function(rows){
+      var d=maxDate(rows);
+      if(!best || d>bestDate){ best=rows; bestDate=d; }
+    });
+    STATE.applicants=best;
+    STATE.dataDate = bestDate || (STATE.dashboard.length?maxDate(STATE.dashboard):"") || "—";
+  } else if(STATE.dashboard.length){
+    STATE.dataDate = maxDate(STATE.dashboard) || "—";
+  }
+  if(STATE.applicants.length || STATE.dashboard.length){
+    setTimeout(renderAll, 250);
+  }
+}
+function maxDate(rows){
+  var mx="";
+  rows.forEach(function(r){ var d=(r["取得日時"]||"").trim(); if(d>mx) mx=d; });
+  return mx;
+}
+function showFiles(report){
+  var box=el("filelist"); clear(box);
+  report.forEach(function(r){
+    var div=document.createElement("div");
+    div.innerHTML=(r.ok?'<span class="ok">✓</span> ':'<span style="color:#c0392b">✕</span> ')+esc(r.name);
+    box.appendChild(div);
+  });
+}
+
+/* ── サンプルデータ（合成・PIIなし）── */
+function loadSample(){
+  var corps=[
+    {name:"桜十字グループ（サンプル）", lid:"sample-a@example.com", facs:[
+      {n:"ベテスダクリニック", pref:"熊本県"},
+      {n:"桜十字病院", pref:"熊本県"},
+      {n:"ベテスダクリニック通所リハビリ", pref:"熊本県"}]},
+    {name:"医療法人サンプル会（サンプル）", lid:"sample-b@example.com", facs:[
+      {n:"さくら訪問看護ステーション", pref:"東京都"},
+      {n:"みどり介護センター", pref:"東京都"},
+      {n:"あおぞらクリニック", pref:"神奈川県"}]}
+  ];
+  var jobs=["看護助手","看護師/准看護師","介護職/ヘルパー","調理師/調理スタッフ","医療事務/受付"];
+  var emps=["正職員","パート・バイト","契約職員"];
+  var fees=["7.2〜12万円","30〜60万円","12〜20万円","4〜8万円","8〜16万円","25〜60万円"];
+  var inProg=["応募","書類選考","面接選考","内定","内定承諾","入職予定"];
+  var fin=["入職完了","選考終了"];
+  var rows=[], id=1000;
+  function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+  function mkDate(){ var y=2025+Math.floor(Math.random()*2); var m=1+Math.floor(Math.random()*12);
+    var d=1+Math.floor(Math.random()*27); return y+"/"+("0"+m).slice(-2)+"/"+("0"+d).slice(-2); }
+  STATE.areaMap={};
+  corps.forEach(function(c){ c.facs.forEach(function(f){ STATE.areaMap[f.n]=f.pref; }); });
+  STATE.hasArea=true;
+  function add(corp, stage, kubun){
+    id++;
+    var fac=pick(corp.facs);
+    var route=Math.random()<0.42?"スカウト経由応募":"通常応募";
+    var ad=mkDate();
+    rows.push({
+      "取得日時":"2026-06-29 07:01:37","法人名":corp.name,"ログインID":corp.lid,
+      "選考区分":kubun,"選考状況":stage,"会員番号":("0"+id).slice(-8),"氏名":"サンプル "+(id-1000),
+      "性別":pick(["男性","女性"]),"年齢":String(22+Math.floor(Math.random()*45)),
+      "保有資格":pick(["介護福祉士 / 自動車運転免許","看護師","資格を持っていない","調理師"]),
+      "応募経路":route,"施設名":fac.n,"求人名":pick(jobs),"雇用形態":pick(emps),
+      "採用費用":pick(fees),"応募日":ad,"更新日":ad,
+      "面接予定日": stage==="面接選考"?pick(["調整中","2026/07/01"]):"",
+      "メモ":"","selection_id":String(9000000+id),"application_id":String(9500000+id)
+    });
+  }
+  corps.forEach(function(c){
+    for(var i=0;i<8;i++) add(c, pick(inProg), "選考中");
+    for(var j=0;j<34;j++) add(c, pick(fin), "選考済み");
+  });
+  STATE.applicants=rows;
+  STATE.dashboard=corps.map(function(c){
+    return {"取得日時":"2026-06-29 07:01:37","法人名":c.name,"ログインID":c.lid,
+      "未確認の応募":String(Math.floor(Math.random()*3)),"未読メッセージ":String(Math.floor(Math.random()*2)),
+      "募集中の施設":String(c.facs.length*4),"募集中の求人":String(c.facs.length*9)};
+  });
+  STATE.dataDate="2026-06-29 07:01:37（サンプル）";
+  renderAll();
+}
+
+/* =========================================================================
+   イベント結線
+   ========================================================================= */
+function init(){
+  el("btnPick").addEventListener("click", function(){ el("fileInput").click(); });
+  el("btnSample").addEventListener("click", loadSample);
+  el("btnReload").addEventListener("click", function(){
+    el("loader").classList.remove("hidden");
+    document.querySelectorAll(".view").forEach(function(v){v.classList.remove("active");});
+    el("tabs").hidden=true; el("datestamp").hidden=true; el("btnReload").hidden=true;
+    el("scopeBar").hidden=true;
+    STATE.areaMap={}; STATE.areaMapByCorp={}; STATE.hasArea=false; STATE.dashboard=[];
+    el("filelist").innerHTML="";
+  });
+  el("fileInput").addEventListener("change", function(e){ ingest(e.target.files); });
+  el("btnClearFilter").addEventListener("click", function(){
+    el("filters").querySelectorAll("select").forEach(function(s){s.value="";});
+    var q=el("fSearch"); if(q) q.value=""; applyFilter();
+  });
+  // 選考状況の意味リファレンス開閉
+  var rt=el("refToggle");
+  if(rt) rt.addEventListener("click", function(){
+    var p=el("refPanel"); var hidden=p.classList.toggle("hidden");
+    rt.textContent=(hidden?"▸":"▾")+" 選考状況の意味を表示（ジョブメドレー登録ガイド準拠）";
+  });
+  // 「選考終了を含める」トグル
+  var cf=el("chkFinished");
+  if(cf) cf.addEventListener("change", function(){
+    APP_INCLUDE_FINISHED=cf.checked;
+    el("finishedToggle").classList.toggle("off", !cf.checked);
+    buildFilters(); applyFilter();
+  });
+  // 月別推移：粒度 月別/週別/日別
+  var tgr=el("trendGran");
+  if(tgr) tgr.querySelectorAll(".seg-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      TREND_GRAN=b.getAttribute("data-gran");
+      tgr.querySelectorAll(".seg-btn").forEach(function(x){
+        x.setAttribute("aria-selected", x===b ? "true":"false"); });
+      renderTrend();
+      var host=el("trendChart"), wrap=host&&host.parentNode;
+      if(wrap&&wrap.classList&&wrap.classList.contains("chart-wrap")) wrap.scrollLeft=wrap.scrollWidth;
+    });
+  });
+  // 月別推移：応募ルート別／職種別 切替
+  var tg=el("trendToggle");
+  if(tg) tg.querySelectorAll(".seg-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      TREND_MODE=b.getAttribute("data-mode");
+      tg.querySelectorAll(".seg-btn").forEach(function(x){
+        x.setAttribute("aria-selected", x===b ? "true":"false"); });
+      renderTrend();
+      var host=el("trendChart"), wrap=host&&host.parentNode;
+      if(wrap&&wrap.classList&&wrap.classList.contains("chart-wrap")) wrap.scrollLeft=wrap.scrollWidth;
+    });
+  });
+  // 表示範囲リセット
+  var bsc=el("btnScopeClear");
+  if(bsc) bsc.addEventListener("click", function(){ SCOPE={}; SCOPE_OPEN=null; SCOPE_SEARCH=""; buildScopeBar(); renderScoped(); });
+  document.querySelectorAll(".tab").forEach(function(t){
+    t.addEventListener("click", function(){ showTab(t.getAttribute("data-tab")); });
+  });
+  // ドラッグ＆ドロップ
+  var dz=el("dropzone");
+  ["dragenter","dragover"].forEach(function(ev){ dz.addEventListener(ev,function(e){
+    e.preventDefault(); dz.classList.add("drag"); }); });
+  ["dragleave","drop"].forEach(function(ev){ dz.addEventListener(ev,function(e){
+    e.preventDefault(); dz.classList.remove("drag"); }); });
+  dz.addEventListener("drop", function(e){
+    if(e.dataTransfer && e.dataTransfer.files) ingest(e.dataTransfer.files);
+  });
+}
+if(typeof document!=="undefined") init();
+
+/* node テスト用にロジックを公開（ブラウザでは無害）*/
+if(typeof module!=="undefined" && module.exports){
+  module.exports={parseCSV:parseCSV, classify:classify, parseFee:parseFee, feeRange:feeRange,
+    fmtFee:fmtFee, applyMonth:applyMonth, countBy:countBy, countByStage:countByStage,
+    monthlyBreakdown:monthlyBreakdown, niceStep:niceStep, extractPref:extractPref,
+    STAGE_ORDER:STAGE_ORDER};
+}
+</script>
+</body>
+</html>
