@@ -304,6 +304,13 @@
           <button class="btn sec" onclick="printDoc('re')">再スカウト文を印刷 / PDF（求人別）</button>
         </div>
         <div class="hint" style="margin-top:8px">プレビューはA4用紙のイメージです。スカウト文面は採用案のみ、求人ごとにページを分けて出力します。再スカウト文には「再スカウト（2通目）」と明記されます。</div>
+        <div class="row" style="margin-top:10px">
+          <span class="hint" style="margin:0">うまく印刷できない・PDFの文字がコピーできない場合はこちら →</span>
+          <button class="btn ghost sm" onclick="openPrintWindow('cond')">条件シートを別タブで開く</button>
+          <button class="btn ghost sm" onclick="openPrintWindow('scout')">スカウト文面を別タブで開く</button>
+          <button class="btn ghost sm" onclick="openPrintWindow('re')">再スカウト文を別タブで開く</button>
+        </div>
+        <div class="hint" style="margin-top:6px">※PDFの文字をコピーして使う場合は、印刷画面の「送信先」で <b>PDFとして保存</b>（Chrome/Edge標準）を選んでください。「Microsoft Print to PDF」など一部のプリンター経由では文字が画像化されることがあります。</div>
       </div>
     </div>
     <div class="panel">
@@ -635,6 +642,11 @@ function condTitle(c){
   const j=state.jobs.find(x=>x.求人ID===c.jobId)||{};
   return `${j.施設名||""} ${c.対象職種||j.職種||""}（求人ID：${c.jobId}）`;
 }
+// スカウト文タブの「対象求人」用：手動編集される希望職種ではなく、元の求人データの職種を使う
+function jobTitle(c){
+  const j=state.jobs.find(x=>x.求人ID===c.jobId)||{};
+  return `${j.施設名||""} ${j.職種||c.経験職種||c.対象職種||""}（求人ID：${c.jobId}）`;
+}
 function allocTotal(){ return state.conditions.reduce((s,c)=>s+(+c.送付数||0),0); }
 function renderAlloc(){
   document.getElementById('capInput').value=state.account.cap;
@@ -742,7 +754,7 @@ function applyArea(i,key){
 function renderScoutPicker(){
   const sel=document.getElementById('scoutPick');
   if(!state.conditions.length){ sel.innerHTML='<option>（送付条件がありません）</option>'; document.getElementById('scoutWrap').innerHTML=emptyMsg("先に送付条件を作成してください"); return; }
-  sel.innerHTML=state.conditions.map((c,i)=>`<option value="${i}">${esc(condTitle(c))}</option>`).join("");
+  sel.innerHTML=state.conditions.map((c,i)=>`<option value="${i}">${esc(jobTitle(c))}</option>`).join("");
   sel.value="0"; renderScout();
 }
 function curScoutIdx(){ return +document.getElementById('scoutPick').value||0; }
@@ -978,7 +990,7 @@ function scoutJobBlocks(mode){
           return `<div class="vid">案${vi+1}・${esc(TONES[vi]?TONES[vi].key:v.tone)}${re?'（再スカウト）':''}</div><pre class="msg">${esc(txt)}</pre>`; }).join("")
       : `<pre class="msg">（採用された案がありません。スカウト文タブで「採用」を選択してください）</pre>`;
     const badge = re? `<span class="rebadge">再スカウト（2通目）</span>` : "";
-    return `<div class="job-block"><div class="job-h">◆${esc(j.施設名||"")}　${esc(c.対象職種||j.職種||"")}（求人ID：${esc(c.jobId)}）${badge}</div>${body}</div>`;
+    return `<div class="job-block"><div class="job-h">◆${esc(j.施設名||"")}　${esc(j.職種||c.経験職種||c.対象職種||"")}（求人ID：${esc(c.jobId)}）${badge}</div>${body}</div>`;
   });
 }
 function renderPreviews(){
@@ -1005,11 +1017,32 @@ function printViaIframe(inner){
   const ifr=document.createElement('iframe');
   ifr.id='printFrame';
   ifr.setAttribute('aria-hidden','true');
-  ifr.style.cssText='position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden';
-  ifr.srcdoc=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>${PRINT_CSS}</style></head><body>${inner}</body></html>`;
-  ifr.onload=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ toast("印刷の起動に失敗しました："+e.message); }
-    setTimeout(()=>{ const f=document.getElementById('printFrame'); if(f)f.remove(); },2000); };
+  // サイズ0/非表示にすると出力が画像化され文字をコピーできなくなるため、
+  // A4相当の実サイズで画面外に配置する（文字はテキストのまま出力される）
+  ifr.style.cssText='position:fixed; left:-12000px; top:0; width:794px; height:1123px; border:0; opacity:1';
   document.body.appendChild(ifr);
+  const doc=ifr.contentWindow.document;
+  doc.open();
+  doc.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>ジョブメドレー スカウト</title><style>${PRINT_CSS}</style></head><body>${inner}</body></html>`);
+  doc.close();
+  const fire=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }
+    catch(e){ toast("印刷の起動に失敗しました："+e.message); }
+    setTimeout(()=>{ const f=document.getElementById('printFrame'); if(f)f.remove(); },3000); };
+  if(doc.readyState==='complete') setTimeout(fire,120); else ifr.onload=()=>setTimeout(fire,120);
+}
+function openPrintWindow(kind){
+  if(!state.conditions.length){ toast("先に送付条件・スカウト文を作成してください"); return; }
+  let inner;
+  if(kind==='cond') inner=condInner();
+  else if(kind==='re') inner=scoutJobBlocks('re').join("");
+  else inner=scoutJobBlocks('first').join("");
+  const w=window.open("","_blank");
+  if(!w){ toast("ポップアップがブロックされました。ブラウザの設定で許可してください"); return; }
+  w.document.open();
+  w.document.write(`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>ジョブメドレー スカウト</title><style>${PRINT_CSS}
+    @media screen{ body{background:#e7ebef; padding:20px} .job-block,h2.dt{background:#fff} }</style></head><body>${inner}
+    <div style="margin-top:16px" class="no-print"><button onclick="window.print()" style="padding:8px 16px">印刷 / PDFとして保存</button></div></body></html>`);
+  w.document.close();
 }
 
 /* ---------------- 保存・呼び出し ---------------- */
