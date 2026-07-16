@@ -1050,17 +1050,45 @@ const LS_KEY="jm_scout_saves_v1", SET_KEY="jm_scout_settings_v1";
 let currentSaveId=null;
 function openSaves(){ renderSaves(); refreshSaveButtons(); openModal('savesModal'); }
 function getSaves(){ try{return JSON.parse(localStorage.getItem(LS_KEY)||"[]");}catch(e){return[];} }
-function setSaves(a){ localStorage.setItem(LS_KEY,JSON.stringify(a)); }
+function setSaves(a){
+  try{ localStorage.setItem(LS_KEY,JSON.stringify(a)); return true; }
+  catch(e){
+    const q=/quota|exceeded|QUOTA/i.test(e.name+e.message);
+    if(q){
+      alert("保存できませんでした。ブラウザの保存容量（約5MB）がいっぱいです。\n\n「保存・呼び出し」画面で不要な保存データを削除してから、もう一度お試しください。\n必要な分は先に「JSON書き出し」でファイルに保存しておけば、あとから読み込めます。");
+      toast("保存容量がいっぱいです。不要な保存を削除してください");
+    }else{
+      alert("保存できませんでした：\n"+e.message);
+    }
+    return false;
+  }
+}
+// 保存サイズ削減：取り込んだCSV全件ではなく、実際に使う求人だけを保存する
+function slimState(){
+  const s=JSON.parse(JSON.stringify(state));
+  const need=new Set([...(s.conditions||[]).map(c=>c.jobId), ...(s.selectedIds||[])]);
+  s.jobs=(s.jobs||[]).filter(j=>need.has(j.求人ID));
+  return s;
+}
+function storageInfo(){
+  let bytes=0;
+  try{ bytes=new Blob([localStorage.getItem(LS_KEY)||""]).size; }catch(e){ bytes=(localStorage.getItem(LS_KEY)||"").length*2; }
+  const kb=Math.round(bytes/1024);
+  const pct=Math.min(100,Math.round(bytes/(5*1024*1024)*100));
+  return {kb,pct,count:getSaves().length};
+}
 function refreshSaveButtons(){
   const cur=getSaves().find(s=>s.id===currentSaveId);
   const btns=document.getElementById('saveBtns'), st=document.getElementById('saveStatus');
   if(!btns||!st) return;
+  const u=storageInfo();
+  const usage=`<div style="margin-top:6px">保存データ ${u.count}件／使用量 約${u.kb}KB（上限の約${u.pct}%）${u.pct>=80?' <b style="color:var(--warn)">― 残りわずかです。不要な保存の削除をおすすめします</b>':''}</div>`;
   if(cur){
     btns.innerHTML=`<button class="btn" onclick="saveSnapshot('over')">上書き保存</button><button class="btn sec" onclick="saveSnapshot('new')">新規保存</button>`;
-    st.innerHTML=`現在は保存データ「<b>${esc(cur.name)}</b>」を編集中です。「上書き保存」でこの保存を更新、「新規保存」で別データとして追加します。`;
+    st.innerHTML=`現在は保存データ「<b>${esc(cur.name)}</b>」を編集中です。「上書き保存」でこの保存を更新、「新規保存」で別データとして追加します。`+usage;
   }else{
     btns.innerHTML=`<button class="btn" onclick="saveSnapshot('new')">保存</button>`;
-    st.textContent="保存すると新しいデータとして登録されます（以前の保存データは消えません）。";
+    st.innerHTML=`保存すると新しいデータとして登録されます（以前の保存データは消えません）。`+usage;
   }
 }
 function saveSnapshot(mode){
@@ -1069,23 +1097,25 @@ function saveSnapshot(mode){
   if(mode==='over' && currentSaveId!=null){
     const idx=saves.findIndex(s=>s.id===currentSaveId);
     if(idx>=0){
+      const prev=saves[idx].name;
       if(nmField) saves[idx].name=nmField;
       saves[idx].date=new Date().toLocaleString('ja-JP');
-      saves[idx].data=JSON.parse(JSON.stringify(state));
-      setSaves(saves); document.getElementById('saveName').value=""; renderSaves(); refreshSaveButtons(); toast("上書き保存しました"); return;
+      saves[idx].data=slimState();
+      if(setSaves(saves)){ document.getElementById('saveName').value=""; renderSaves(); refreshSaveButtons(); toast("上書き保存しました"); }
+      else { saves[idx].name=prev; }
+      return;
     }
   }
   const nm=nmField || `${state.account.name||"無題"}_${ymd()}`;
   const id=Date.now();
-  saves.unshift({id,name:nm,date:new Date().toLocaleString('ja-JP'),data:JSON.parse(JSON.stringify(state))});
-  currentSaveId=id;
-  setSaves(saves); document.getElementById('saveName').value=""; renderSaves(); refreshSaveButtons(); toast("新規保存しました");
+  saves.unshift({id,name:nm,date:new Date().toLocaleString('ja-JP'),data:slimState()});
+  if(setSaves(saves)){ currentSaveId=id; document.getElementById('saveName').value=""; renderSaves(); refreshSaveButtons(); toast("新規保存しました"); }
 }
 function overwriteSnap(id){
   const saves=getSaves(), idx=saves.findIndex(s=>s.id===id); if(idx<0)return;
   if(!confirm(`保存データ「${saves[idx].name}」を、現在の内容で上書きしますか？`))return;
-  saves[idx].data=JSON.parse(JSON.stringify(state)); saves[idx].date=new Date().toLocaleString('ja-JP');
-  currentSaveId=id; setSaves(saves); renderSaves(); refreshSaveButtons(); toast("上書き保存しました");
+  saves[idx].data=slimState(); saves[idx].date=new Date().toLocaleString('ja-JP');
+  if(setSaves(saves)){ currentSaveId=id; renderSaves(); refreshSaveButtons(); toast("上書き保存しました"); }
 }
 function renderSaves(){
   const saves=getSaves(), el=document.getElementById('savesList');
