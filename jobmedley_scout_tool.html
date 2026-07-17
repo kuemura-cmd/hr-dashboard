@@ -1049,17 +1049,20 @@ function openPrintWindow(kind){
 const LS_KEY="jm_scout_saves_v1", SET_KEY="jm_scout_settings_v1";
 let currentSaveId=null;
 function openSaves(){ renderSaves(); refreshSaveButtons(); openModal('savesModal'); }
+const LS_QUOTA=5*1024*1024; // ブラウザの目安上限（約5MB／UTF-16換算）
 function getSaves(){ try{return JSON.parse(localStorage.getItem(LS_KEY)||"[]");}catch(e){return[];} }
 function setSaves(a){
-  try{ localStorage.setItem(LS_KEY,JSON.stringify(a)); return true; }
-  catch(e){
-    const q=/quota|exceeded|QUOTA/i.test(e.name+e.message);
-    if(q){
-      alert("保存できませんでした。ブラウザの保存容量（約5MB）がいっぱいです。\n\n「保存・呼び出し」画面で不要な保存データを削除してから、もう一度お試しください。\n必要な分は先に「JSON書き出し」でファイルに保存しておけば、あとから読み込めます。");
-      toast("保存容量がいっぱいです。不要な保存を削除してください");
-    }else{
-      alert("保存できませんでした：\n"+e.message);
-    }
+  const json=JSON.stringify(a);
+  const prev=localStorage.getItem(LS_KEY);
+  try{
+    // 先に古い値を解放してから書き込む。これにより削除・縮小は必ず成功する
+    localStorage.removeItem(LS_KEY);
+    localStorage.setItem(LS_KEY,json);
+    return true;
+  }catch(e){
+    try{ if(prev!=null) localStorage.setItem(LS_KEY,prev); }catch(_){}
+    alert("保存できませんでした。ブラウザの保存容量（約5MB）がいっぱいです。\n\n「保存・呼び出し」画面で不要な保存データを削除してから、もう一度お試しください。\n必要な分は先に「JSON書き出し」でファイルに保存しておけば、あとから読み込めます。");
+    toast("保存容量がいっぱいです。不要な保存を削除してください");
     return false;
   }
 }
@@ -1070,19 +1073,29 @@ function slimState(){
   s.jobs=(s.jobs||[]).filter(j=>need.has(j.求人ID));
   return s;
 }
+function utf16Bytes(s){ return (s==null?0:String(s).length*2); } // ブラウザはUTF-16で容量を数える
+function itemBytes(v){ return utf16Bytes(v); }
 function storageInfo(){
-  let bytes=0;
-  try{ bytes=new Blob([localStorage.getItem(LS_KEY)||""]).size; }catch(e){ bytes=(localStorage.getItem(LS_KEY)||"").length*2; }
-  const kb=Math.round(bytes/1024);
-  const pct=Math.min(100,Math.round(bytes/(5*1024*1024)*100));
-  return {kb,pct,count:getSaves().length};
+  let total=0, ours=0;
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i), v=localStorage.getItem(k);
+      const b=utf16Bytes(k)+utf16Bytes(v);
+      total+=b; if(k===LS_KEY) ours=b;
+    }
+  }catch(e){}
+  return {
+    kb:Math.round(ours/1024), totalKb:Math.round(total/1024),
+    pct:Math.min(100,Math.round(total/LS_QUOTA*100)),
+    count:getSaves().length
+  };
 }
 function refreshSaveButtons(){
   const cur=getSaves().find(s=>s.id===currentSaveId);
   const btns=document.getElementById('saveBtns'), st=document.getElementById('saveStatus');
   if(!btns||!st) return;
   const u=storageInfo();
-  const usage=`<div style="margin-top:6px">保存データ ${u.count}件／使用量 約${u.kb}KB（上限の約${u.pct}%）${u.pct>=80?' <b style="color:var(--warn)">― 残りわずかです。不要な保存の削除をおすすめします</b>':''}</div>`;
+  const usage=`<div style="margin-top:6px">保存データ ${u.count}件／このアプリの使用量 約${u.kb}KB（ブラウザ全体 約${u.totalKb}KB・上限の約${u.pct}%）${u.pct>=80?' <b style="color:var(--warn)">― 残りわずかです。不要な保存の削除、または「保存データを軽量化」をお試しください</b>':''}</div>`;
   if(cur){
     btns.innerHTML=`<button class="btn" onclick="saveSnapshot('over')">上書き保存</button><button class="btn sec" onclick="saveSnapshot('new')">新規保存</button>`;
     st.innerHTML=`現在は保存データ「<b>${esc(cur.name)}</b>」を編集中です。「上書き保存」でこの保存を更新、「新規保存」で別データとして追加します。`+usage;
@@ -1119,13 +1132,43 @@ function overwriteSnap(id){
 }
 function renderSaves(){
   const saves=getSaves(), el=document.getElementById('savesList');
-  el.innerHTML = saves.length? saves.map(s=>`<div class="save-item">
-    <div><div class="nm">${esc(s.name)}${s.id===currentSaveId?' <span class="auto-tag">編集中</span>':''}</div><div class="dt">${esc(s.date)}</div></div><div class="sp"></div>
+  el.innerHTML = saves.length? saves.map(s=>{
+    const kb=Math.round(itemBytes(JSON.stringify(s))/1024);
+    return `<div class="save-item">
+    <div><div class="nm">${esc(s.name)}${s.id===currentSaveId?' <span class="auto-tag">編集中</span>':''}</div><div class="dt">${esc(s.date)}　${kb}KB${kb>200?' <b style="color:var(--warn)">← 旧形式で大きめ</b>':''}</div></div><div class="sp"></div>
     <button class="btn sec sm" onclick="loadSnap(${s.id})">呼び出し</button>
     <button class="btn ghost sm" onclick="overwriteSnap(${s.id})">上書き</button>
     <button class="btn ghost sm" onclick="dupSnap(${s.id})">複製</button>
-    <button class="btn warn sm" onclick="delSnap(${s.id})">削除</button></div>`).join("")
+    <button class="btn warn sm" onclick="delSnap(${s.id})">削除</button></div>`;}).join("")
+    + `<div class="row" style="margin-top:12px; justify-content:space-between">
+        <button class="btn ghost sm" onclick="compactSaves()">保存データを軽量化（求人データを整理）</button>
+        <button class="btn warn sm" onclick="delAllSaves()">すべて削除</button></div>`
     : '<div class="empty">保存データはまだありません</div>';
+}
+function delSnap(id){
+  if(!confirm("この保存データを削除しますか？"))return;
+  const rest=getSaves().filter(x=>x.id!==id);
+  if(setSaves(rest)){ if(id===currentSaveId)currentSaveId=null; renderSaves(); refreshSaveButtons(); toast("削除しました"); }
+}
+function delAllSaves(){
+  if(!confirm("すべての保存データを削除しますか？\n※先に「JSON書き出し」でバックアップできます。この操作は元に戻せません。"))return;
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  currentSaveId=null; renderSaves(); refreshSaveButtons(); toast("すべて削除しました");
+}
+// 旧形式（取り込んだ求人CSV全件を含む）の保存データから、使う求人だけを残して縮小する
+function compactSaves(){
+  const saves=getSaves(); if(!saves.length)return;
+  const before=itemBytes(JSON.stringify(saves));
+  saves.forEach(s=>{
+    const d=s.data||{};
+    const need=new Set([...((d.conditions||[]).map(c=>c.jobId)), ...(d.selectedIds||[])]);
+    if(Array.isArray(d.jobs)) d.jobs=d.jobs.filter(j=>need.has(j.求人ID));
+  });
+  const after=itemBytes(JSON.stringify(saves));
+  if(setSaves(saves)){
+    renderSaves(); refreshSaveButtons();
+    toast(`軽量化しました（約${Math.round(before/1024)}KB → 約${Math.round(after/1024)}KB）`);
+  }
 }
 function loadSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return;
   state=JSON.parse(JSON.stringify(s.data));
@@ -1134,8 +1177,8 @@ function loadSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return;
   document.getElementById('acctName').value=state.account.name||"";
   closeModal('savesModal'); go('select'); toast("呼び出しました"); }
 function dupSnap(id){ const s=getSaves().find(x=>x.id===id); if(!s)return; const saves=getSaves();
-  saves.unshift({id:Date.now(),name:s.name+"（複製）",date:new Date().toLocaleString('ja-JP'),data:s.data}); setSaves(saves); renderSaves(); }
-function delSnap(id){ if(!confirm("この保存データを削除しますか？"))return; setSaves(getSaves().filter(x=>x.id!==id)); if(id===currentSaveId)currentSaveId=null; renderSaves(); refreshSaveButtons(); }
+  saves.unshift({id:Date.now(),name:s.name+"（複製）",date:new Date().toLocaleString('ja-JP'),data:s.data});
+  if(setSaves(saves)){ renderSaves(); refreshSaveButtons(); toast("複製しました"); } }
 function exportJson(){
   const blob=new Blob([JSON.stringify(getSaves(),null,2)],{type:"application/json"});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`jobmedley_scout_${ymd()}.json`; a.click();
