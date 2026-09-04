@@ -860,44 +860,44 @@ function facilityNoun(name,type){
 function buildBody(c,vi,mode){
   const job=state.jobs.find(j=>j.求人ID===c.jobId)||{};
   const v=c.variants[vi], tone=TONES[vi]||{lead:"",defPts:[]};
-  const fac=job.施設名||"当施設", place=job.就業場所||"", noun=facilityNoun(fac,job.施設種別);
+  const fac=job.施設名||"当施設", noun=facilityNoun(fac,job.施設種別);
   const re=(mode==='re');
   const use=(v.use&&v.use.length)?v.use:tone.defPts;
   const pts=use.map(pi=>c.points[pi]).filter(Boolean);
+  const shokushu=c.対象職種||job.職種||"";
   const L=[];
+  // 1. キャッチコピー（冒頭：LINEで最初に表示される）
   L.push(v.catch||tone.catch);
   L.push("");
+  // 2. ■ハイライト（冒頭付近：LINEのプレビューで見えるように）
+  pts.forEach(p=>L.push("■"+p));
+  if(pts.length) L.push("");
+  // 3. 挨拶＋導入
   if(re){
     L.push(`こんにちは。${fac}の採用担当です。`);
-    L.push("その後、転職活動のご状況はいかがでしょうか？");
-    L.push(`プロフィールをあらためて拝見し、ぜひ${noun}でご活躍いただきたく、再度ご連絡させていただきました。`);
+    L.push("");
+    L.push(`その後、お仕事探しのご状況はいかがでしょうか。${noun}では引き続き、一緒に働いてくださる${shokushu?shokushu+"の":""}方を募集しており、あらためてご連絡いたしました。`);
   }else{
-    L.push(`はじめまして！${place?place+" ":""}${fac}の採用担当です。`);
-    L.push(`プロフィールを拝見して、ぜひ${noun}でご活躍いただきたくご連絡させていただきました！`);
+    L.push(`はじめまして。${fac}の採用担当です。`);
+    L.push("");
+    L.push(`これまでのご経験を活かして腰を据えて働ける職場をお探しでしたら、ぜひ${noun}を知っていただきたく、オファーをお送りしました。`);
   }
   L.push("");
+  // 4. 施設紹介
   L.push((c.施設紹介&&c.施設紹介.trim())? c.施設紹介.trim() : tone.lead);
   L.push("");
-  L.push(`【${fac}の魅力】`);
-  pts.forEach(p=>L.push("・"+p));
-  L.push("");
+  // 5. 募集内容
   L.push("【募集内容】");
-  L.push(`・職種：${c.対象職種||job.職種||""}`);
-  if(job.給与) L.push(`・給与：${job.給与}`);
-  if(c.休日&&c.休日.trim()) L.push(`・休日：${c.休日.trim()}`);
-  if(c.保有資格) L.push(`・資格：${c.保有資格}`);
-  L.push(`・雇用形態：${c.雇用形態}`);
-  if(c.補足&&c.補足.trim()) c.補足.trim().split(/\n+/).forEach(x=>x.trim()&&L.push("・"+x.trim()));
+  if(job.給与) L.push(`給与：${job.給与}`);
+  if(c.補足&&c.補足.trim()) L.push(`勤務時間：${c.補足.trim().split(/\n+/).join("、")}`);
+  if(c.休日&&c.休日.trim()) L.push(`休日：${c.休日.trim()}`);
+  if(c.保有資格) L.push(`資格：${c.保有資格}`);
+  L.push(`雇用形態：${c.雇用形態}`);
   L.push("");
-  if(re){
-    L.push("子育て中の方でも、ブランクのある方でも無理なく働ける環境です。");
-    L.push("「まずは話を聞いてみたい」という段階でも大歓迎です。");
-    L.push("ご興味がございましたら、お気軽にご返信ください。ご返信を心よりお待ちしております。");
-  }else{
-    L.push("少しでもこの募集に興味を持っていただけましたら、返信種別で「このスカウトに応募する」を選びご返信ください。");
-    L.push("ご不明点などがございましたらお気軽にお問い合わせください。");
-    L.push("お返事を心よりお待ちしております！");
-  }
+  // 6. クロージング（見学OK＋やわらかい結び）
+  L.push("「まずは職場を見てから決めたい」という方は、見学のみのご連絡でも大歓迎です。");
+  L.push("");
+  L.push("少しでも気になりましたら、お気軽にご返信ください。ご応募をお待ちしています。");
   return L.join("\n");
 }
 function genVariant(i,vi){ state.conditions[i].variants[vi].body=buildBody(state.conditions[i],vi,'first'); renderScout(); toast(`案${vi+1}を生成しました`); }
@@ -912,16 +912,21 @@ function aiVariant(i,vi){
   const c=state.conditions[i], v=c.variants[vi], job=state.jobs.find(j=>j.求人ID===c.jobId)||{};
   const pts=v.use.map(pi=>c.points[pi]).filter(Boolean);
   const note=(v.aiNote||"").trim();
-  const base=v.body || buildBody(c,vi);
-  const prompt=`あなたは医療・介護の採用担当です。ジョブメドレーのスカウトメッセージを日本語で作成してください。
-施設名：${job.施設名||""} ／ 勤務地：${job.就業場所||""} ／ 職種：${c.対象職種} ／ 給与：${job.給与||""} ／ 休日：${c.休日||""} ／ 資格：${c.保有資格||"不問"}
+  const base=v.body || buildBody(c,vi,'first');
+  const prompt=`あなたは医療・介護の採用担当です。LINEで届くジョブメドレーのスカウトメッセージを日本語で作成してください。冒頭で開封したくなる構成にします。
+施設名：${job.施設名||""} ／ 勤務地：${job.就業場所||""} ／ 職種：${c.対象職種} ／ 給与：${job.給与||""} ／ 勤務時間：${c.補足||""} ／ 休日：${c.休日||""} ／ 資格：${c.保有資格||"不問"}
 施設紹介：${c.施設紹介||"（なし）"}
-募集補足：${c.補足||"（なし）"}
 トーン：${TONES[vi]?TONES[vi].key:v.tone}
-キャッチコピー：${v.catch}
-必ず盛り込む魅力：${pts.join(" / ")||"（特になし）"}${note?`\n★担当者からの指示（最優先で反映）：${note}`:""}
-構成：キャッチ→「はじめまして！〔勤務地〕〔施設名〕の採用担当です」→「ぜひ〔当院/私たちの施設/私たちの事業所〕でご活躍…」→施設紹介→【施設名の魅力】の箇条書き→【募集内容】(職種・給与・休日・資格・雇用形態)→結び（「このスカウトに応募する」で返信を促す）。
-注意：性別・年齢の限定表現は本文に書かない。400〜600字程度。本文のみ出力。
+キャッチコピー（冒頭に置く）：${v.catch}
+冒頭に「■」で並べるハイライト：${pts.join(" / ")||"（特になし）"}${note?`\n★担当者からの指示（最優先で反映）：${note}`:""}
+構成（この順番）：
+1) キャッチコピー（絵文字可）
+2) 「■」で始まるハイライトを3〜5行
+3) 挨拶「はじめまして。〔施設名〕の採用担当です。」
+4) 導入（1〜2文）と施設紹介
+5) 【募集内容】給与・勤務時間・休日・資格
+6) 「見学のみのご連絡でも大歓迎です。」→「少しでも気になりましたら、お気軽にご返信ください。ご応募をお待ちしています。」
+注意：性別・年齢の限定表現は本文に書かない。500〜700字程度。本文のみ出力。
 参考の下書き：
 ${base}`;
   toast("AIに問い合わせ中…");
